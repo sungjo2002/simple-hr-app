@@ -1,3 +1,6 @@
+아래는 수정 반영된 `app.py` 전체입니다.
+
+```python
 from __future__ import annotations
 
 from calendar import monthrange
@@ -337,10 +340,10 @@ def clamp_score(value: float) -> int:
 
 def score_bar_class(score: int) -> str:
     if score >= 80:
-        return "progress-good"
+        return "bar-good"
     if score >= 50:
-        return "progress-mid"
-    return "progress-warn"
+        return "bar-mid"
+    return "bar-warn"
 
 
 def calculate_employee_scorecard(employee_id: int | None) -> dict[str, Any]:
@@ -854,9 +857,15 @@ BASE_HTML = """
     .panel-body {
         padding: 18px;
     }
+    .home-grid {
+        display: grid;
+        grid-template-columns: minmax(320px, 380px) minmax(0, 1fr);
+        gap: 18px;
+        align-items: start;
+    }
     .content-grid {
         display: grid;
-        grid-template-columns: minmax(0, 1.5fr) minmax(320px, 0.9fr);
+        grid-template-columns: minmax(0, 1.35fr) minmax(340px, 0.85fr);
         gap: 18px;
         align-items: start;
     }
@@ -1021,45 +1030,39 @@ BASE_HTML = """
     }
     .score-box {
         display: grid;
-        gap: 14px;
+        gap: 12px;
         min-width: 0;
     }
-    .score-card {
-        background: #f8fafc;
-        border: 1px solid #dbe4ee;
-        border-radius: 14px;
-        padding: 14px;
-        min-width: 0;
-    }
-    .score-head {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 8px;
+    .score-row {
+        display: grid;
+        grid-template-columns: 84px minmax(0, 1fr) 50px;
         gap: 10px;
+        align-items: center;
     }
-    .score-title {
-        font-size: 14px;
+    .score-label {
+        font-size: 13px;
         font-weight: bold;
+        color: #374151;
     }
-    .score-value {
-        font-size: 18px;
-        font-weight: bold;
-    }
-    .progress {
+    .bar-wrap {
         width: 100%;
-        height: 12px;
+        height: 18px;
         background: #e5e7eb;
         border-radius: 999px;
         overflow: hidden;
     }
-    .progress-bar {
+    .bar-fill {
         height: 100%;
         border-radius: 999px;
     }
-    .progress-good { background: #16a34a; }
-    .progress-mid { background: #2563eb; }
-    .progress-warn { background: #ea580c; }
+    .bar-good { background: linear-gradient(90deg, #22c55e, #16a34a); }
+    .bar-mid { background: linear-gradient(90deg, #60a5fa, #2563eb); }
+    .bar-warn { background: linear-gradient(90deg, #fb923c, #ea580c); }
+    .score-num {
+        text-align: right;
+        font-size: 13px;
+        font-weight: bold;
+    }
     .search-result-list {
         display: grid;
         gap: 8px;
@@ -1086,7 +1089,8 @@ BASE_HTML = """
         margin-top: 4px;
     }
     @media (max-width: 1280px) {
-        .content-grid {
+        .content-grid,
+        .home-grid {
             grid-template-columns: 1fr;
         }
         .two-col {
@@ -1108,6 +1112,9 @@ BASE_HTML = """
         th, td {
             font-size: 13px;
             padding: 10px 8px;
+        }
+        .score-row {
+            grid-template-columns: 72px minmax(0, 1fr) 44px;
         }
     }
 </style>
@@ -1198,12 +1205,26 @@ def home() -> str:
     hospital_count = count_status_for_client_company(client_company_id, current_date, "hospital")
     absent_count = count_status_for_client_company(client_company_id, current_date, "absent")
 
+    if employee_keyword:
+        lowered = employee_keyword.lower()
+        filtered_employees = [e for e in filtered_employees if lowered in e.name.lower()]
+
+    if selected_employee_id:
+        selected_employee = get_employee(selected_employee_id)
+        if selected_employee and (
+            client_company_id is None or selected_employee.current_client_company_id == client_company_id
+        ):
+            filtered_employees = [selected_employee]
+
     rows = ""
     for employee in filtered_employees:
+        row_style = ""
+        if selected_employee_id == employee.id:
+            row_style = ' style="background:#eff6ff;"'
         rows += f"""
-        <tr>
+        <tr{row_style}>
             <td>{employee.id}</td>
-            <td><a href="/employees/{employee.id}">{employee.name}</a></td>
+            <td><a href="/?work_date={current_date}&client_company_id={client_company_id or ''}&employee_keyword={employee_keyword}&selected_employee_id={employee.id}">{employee.name}</a></td>
             <td>{employee.nationality}</td>
             <td>{get_our_business_name(employee.our_business_id)}</td>
             <td>{get_client_company_name(employee.current_client_company_id)}</td>
@@ -1224,7 +1245,6 @@ def home() -> str:
     if employee_keyword:
         like_keyword = f"%{employee_keyword}%"
         search_query = search_query.filter(Employee.name.ilike(like_keyword))
-
     if client_company_id is not None:
         search_query = search_query.filter_by(current_client_company_id=client_company_id)
 
@@ -1250,7 +1270,7 @@ def home() -> str:
         search_results_html = '<div class="muted">검색 결과가 없습니다.</div>'
 
     score_html = """
-    <div class="muted">오른쪽에서 사원을 검색하면 평가 지표가 표시됩니다.</div>
+    <div class="muted">사원을 검색하면 지표가 표시됩니다.</div>
     """
     if selected_employee and scorecard:
         work_score = scorecard["work_score"]
@@ -1259,49 +1279,23 @@ def home() -> str:
 
         score_html = f"""
         <div class="score-box">
-            <div class="score-card">
-                <div class="score-head">
-                    <div class="score-title">일 잘함 지표</div>
-                    <div class="score-value">{work_score}점</div>
-                </div>
-                <div class="progress">
-                    <div class="progress-bar {score_bar_class(work_score)}" style="width:{work_score}%;"></div>
-                </div>
-                <div class="muted" style="margin-top:8px;">근무완료, 근무중, 연장근무 반영</div>
+            <div class="score-row">
+                <div class="score-label">일 잘함</div>
+                <div class="bar-wrap"><div class="bar-fill {score_bar_class(work_score)}" style="width:{work_score}%;"></div></div>
+                <div class="score-num">{work_score}</div>
             </div>
-
-            <div class="score-card">
-                <div class="score-head">
-                    <div class="score-title">성실도 지표</div>
-                    <div class="score-value">{sincerity_score}점</div>
-                </div>
-                <div class="progress">
-                    <div class="progress-bar {score_bar_class(sincerity_score)}" style="width:{sincerity_score}%;"></div>
-                </div>
-                <div class="muted" style="margin-top:8px;">출근 유지, 결근 감소, 휴가 처리 반영</div>
+            <div class="score-row">
+                <div class="score-label">성실도</div>
+                <div class="bar-wrap"><div class="bar-fill {score_bar_class(sincerity_score)}" style="width:{sincerity_score}%;"></div></div>
+                <div class="score-num">{sincerity_score}</div>
             </div>
-
-            <div class="score-card">
-                <div class="score-head">
-                    <div class="score-title">현장 안정성 지표</div>
-                    <div class="score-value">{stability_score}점</div>
-                </div>
-                <div class="progress">
-                    <div class="progress-bar {score_bar_class(stability_score)}" style="width:{stability_score}%;"></div>
-                </div>
-                <div class="muted" style="margin-top:8px;">무단결근, 문제사유, 병원 빈도 반영</div>
+            <div class="score-row">
+                <div class="score-label">안정성</div>
+                <div class="bar-wrap"><div class="bar-fill {score_bar_class(stability_score)}" style="width:{stability_score}%;"></div></div>
+                <div class="score-num">{stability_score}</div>
             </div>
-
-            <div class="panel" style="box-shadow:none; border-radius:14px;">
-                <div class="panel-body">
-                    <div><strong>선택 인력:</strong> {selected_employee.name}</div>
-                    <div class="muted" style="margin-top:6px;">
-                        {selected_employee.nationality} / {get_our_business_name(selected_employee.our_business_id)} / {get_client_company_name(selected_employee.current_client_company_id)}
-                    </div>
-                    <div class="muted" style="margin-top:6px;">
-                        분석 기록 수: {scorecard["record_count"]}건
-                    </div>
-                </div>
+            <div class="muted" style="margin-top:4px;">
+                선택 인력: {selected_employee.name} / 기록 {scorecard["record_count"]}건
             </div>
         </div>
         """
@@ -1339,35 +1333,12 @@ def home() -> str:
         <div class="card"><div class="label">결근</div><div class="value">{absent_count}</div></div>
     </div>
 
-    <div class="content-grid">
-        <div class="panel">
-            <div class="panel-head">
-                <h2>인력현황</h2>
-                <p>{current_date} 기준</p>
-            </div>
-            <div class="panel-body">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>번호</th>
-                            <th>이름</th>
-                            <th>국적</th>
-                            <th>사업자</th>
-                            <th>거래처</th>
-                            <th>근무타입</th>
-                            <th>상태</th>
-                        </tr>
-                    </thead>
-                    <tbody>{rows}</tbody>
-                </table>
-            </div>
-        </div>
-
+    <div class="home-grid">
         <div>
             <div class="panel" style="margin-bottom:18px;">
                 <div class="panel-head">
-                    <h2>사원 검색 / 지표</h2>
-                    <p>인력현황 오른쪽 분석 영역</p>
+                    <h2>사원검색</h2>
+                    <p>검색 결과와 인력현황 연동</p>
                 </div>
                 <div class="panel-body">
                     <form method="get">
@@ -1389,12 +1360,35 @@ def home() -> str:
 
             <div class="panel">
                 <div class="panel-head">
-                    <h2>인력 성향 지표</h2>
-                    <p>근태 기록 기반 참고용 점수</p>
+                    <h2>인력 지표</h2>
+                    <p>가로 그래프</p>
                 </div>
                 <div class="panel-body">
                     {score_html}
                 </div>
+            </div>
+        </div>
+
+        <div class="panel">
+            <div class="panel-head">
+                <h2>인력현황</h2>
+                <p>{current_date} 기준</p>
+            </div>
+            <div class="panel-body">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>번호</th>
+                            <th>이름</th>
+                            <th>국적</th>
+                            <th>사업자</th>
+                            <th>거래처</th>
+                            <th>근무타입</th>
+                            <th>상태</th>
+                        </tr>
+                    </thead>
+                    <tbody>{rows}</tbody>
+                </table>
             </div>
         </div>
     </div>
@@ -2563,3 +2557,11 @@ with app.app_context():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
+```
+
+변경 내용
+
+* 사원 검색하면 인력현황도 같이 필터링됩니다.
+* 검색 결과에서 선택한 사원은 인력현황 행도 같이 강조됩니다.
+* `사원검색`은 왼쪽 위, `지표`는 왼쪽 아래, `인력현황`은 오른쪽에 유지됩니다.
+* 지표는 세로 카드가 아니라 **가로 막대 그래프**로 바뀌었습니다.
