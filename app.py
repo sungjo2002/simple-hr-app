@@ -298,13 +298,6 @@ def get_display_status(employee_id: int, work_date: str) -> str:
     return record.status if record else "before_work"
 
 
-def get_employees_by_our_business(our_business_id: int | None) -> list[Employee]:
-    query = Employee.query
-    if our_business_id is not None:
-        query = query.filter_by(our_business_id=our_business_id)
-    return query.order_by(Employee.id.asc()).all()
-
-
 def get_employees_by_client_company(client_company_id: int | None) -> list[Employee]:
     query = Employee.query
     if client_company_id is not None:
@@ -336,6 +329,80 @@ def status_badge(status: str) -> str:
 
 def format_won(value: float | int) -> str:
     return f"{int(round(value)):,}"
+
+
+def clamp_score(value: float) -> int:
+    return max(0, min(100, int(round(value))))
+
+
+def score_bar_class(score: int) -> str:
+    if score >= 80:
+        return "progress-good"
+    if score >= 50:
+        return "progress-mid"
+    return "progress-warn"
+
+
+def calculate_employee_scorecard(employee_id: int | None) -> dict[str, Any]:
+    if employee_id is None:
+        return {
+            "work_score": 0,
+            "sincerity_score": 0,
+            "stability_score": 0,
+            "record_count": 0,
+        }
+
+    employee = get_employee(employee_id)
+    if not employee:
+        return {
+            "work_score": 0,
+            "sincerity_score": 0,
+            "stability_score": 0,
+            "record_count": 0,
+        }
+
+    records = (
+        AttendanceRecord.query
+        .filter_by(employee_id=employee_id)
+        .order_by(AttendanceRecord.work_date.desc())
+        .limit(60)
+        .all()
+    )
+
+    if not records:
+        return {
+            "work_score": 50,
+            "sincerity_score": 50,
+            "stability_score": 50,
+            "record_count": 0,
+        }
+
+    completed_count = sum(1 for r in records if r.status == "completed")
+    working_count = sum(1 for r in records if r.status == "working")
+    hospital_count = sum(1 for r in records if r.status == "hospital")
+    vacation_count = sum(1 for r in records if r.status == "vacation")
+    absent_count = sum(1 for r in records if r.status == "absent")
+    trouble_count = sum(
+        1 for r in records
+        if "무단" in (r.reason or "") or "말썽" in (r.reason or "") or "문제" in (r.reason or "")
+    )
+
+    total = len(records)
+    productive_ratio = (completed_count + working_count * 0.7) / total
+    sincerity_ratio = (completed_count + working_count + vacation_count * 0.8) / total
+    stability_ratio = max(0.0, 1.0 - ((absent_count * 1.2 + trouble_count * 1.5 + hospital_count * 0.3) / total))
+
+    overtime_bonus = min(10.0, sum(r.overtime_minutes for r in records) / 600.0)
+    work_score = clamp_score(productive_ratio * 100 + overtime_bonus)
+    sincerity_score = clamp_score(sincerity_ratio * 100 - absent_count * 8)
+    stability_score = clamp_score(stability_ratio * 100)
+
+    return {
+        "work_score": work_score,
+        "sincerity_score": sincerity_score,
+        "stability_score": stability_score,
+        "record_count": total,
+    }
 
 
 def ensure_attendance_record(employee: Employee, work_date: str) -> AttendanceRecord:
@@ -676,6 +743,8 @@ def seed_database() -> None:
         AttendanceRecord(our_business_id=employees[0].our_business_id, client_company_id=employees[0].current_client_company_id, employee_id=employees[0].id, work_date=today_str(), work_type_id=employees[0].work_type_id, status="working", check_in_at="08:55:00", check_out_at="", overtime_minutes=0, night_minutes=0, reason="", created_by="admin", updated_by="admin"),
         AttendanceRecord(our_business_id=employees[1].our_business_id, client_company_id=employees[1].current_client_company_id, employee_id=employees[1].id, work_date=today_str(), work_type_id=employees[1].work_type_id, status="hospital", check_in_at="", check_out_at="", overtime_minutes=0, night_minutes=0, reason="병원 진료", created_by="admin", updated_by="admin"),
         AttendanceRecord(our_business_id=employees[2].our_business_id, client_company_id=employees[2].current_client_company_id, employee_id=employees[2].id, work_date=today_str(), work_type_id=employees[2].work_type_id, status="completed", check_in_at="07:50:00", check_out_at="18:10:00", overtime_minutes=70, night_minutes=0, reason="", created_by="admin", updated_by="admin"),
+        AttendanceRecord(our_business_id=employees[3].our_business_id, client_company_id=employees[3].current_client_company_id, employee_id=employees[3].id, work_date=today_str(), work_type_id=employees[3].work_type_id, status="absent", check_in_at="", check_out_at="", overtime_minutes=0, night_minutes=0, reason="무단 결근", created_by="admin", updated_by="admin"),
+        AttendanceRecord(our_business_id=employees[4].our_business_id, client_company_id=employees[4].current_client_company_id, employee_id=employees[4].id, work_date=today_str(), work_type_id=employees[4].work_type_id, status="completed", check_in_at="20:00:00", check_out_at="06:00:00", overtime_minutes=45, night_minutes=240, reason="", created_by="admin", updated_by="admin"),
     ]
     db.session.add_all(records)
     db.session.commit()
@@ -742,13 +811,13 @@ BASE_HTML = """
         border-color: var(--primary);
     }
     .wrap {
-        max-width: 1440px;
+        width: min(100%, 1800px);
         margin: 0 auto;
-        padding: 20px;
+        padding: clamp(12px, 2vw, 20px);
     }
     .cards {
         display: grid;
-        grid-template-columns: repeat(6, 1fr);
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
         gap: 14px;
         margin-bottom: 20px;
     }
@@ -757,6 +826,7 @@ BASE_HTML = """
         border: 1px solid var(--line);
         border-radius: 16px;
         box-shadow: 0 2px 10px rgba(0,0,0,0.04);
+        min-width: 0;
     }
     .card { padding: 18px; }
     .label {
@@ -781,20 +851,23 @@ BASE_HTML = """
         font-size: 13px;
         color: var(--muted);
     }
-    .panel-body { padding: 18px; }
+    .panel-body {
+        padding: 18px;
+    }
     .content-grid {
         display: grid;
-        grid-template-columns: 1.3fr 0.7fr;
+        grid-template-columns: minmax(0, 1.5fr) minmax(320px, 0.9fr);
         gap: 18px;
+        align-items: start;
     }
     .two-col {
         display: grid;
-        grid-template-columns: 280px 1fr;
+        grid-template-columns: minmax(240px, 280px) minmax(0, 1fr);
         gap: 18px;
     }
     .form-grid {
         display: grid;
-        grid-template-columns: 1fr 1fr;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
         gap: 14px;
     }
     .actions {
@@ -877,6 +950,7 @@ BASE_HTML = """
     table {
         width: 100%;
         border-collapse: collapse;
+        table-layout: auto;
     }
     th, td {
         border-top: 1px solid #edf1f5;
@@ -945,12 +1019,96 @@ BASE_HTML = """
         margin-bottom: 16px;
         font-size: 14px;
     }
-    @media (max-width: 1180px) {
-        .cards { grid-template-columns: 1fr 1fr 1fr; }
-        .content-grid, .two-col, .form-grid { grid-template-columns: 1fr; }
+    .score-box {
+        display: grid;
+        gap: 14px;
+        min-width: 0;
     }
-    @media (max-width: 700px) {
-        .cards { grid-template-columns: 1fr 1fr; }
+    .score-card {
+        background: #f8fafc;
+        border: 1px solid #dbe4ee;
+        border-radius: 14px;
+        padding: 14px;
+        min-width: 0;
+    }
+    .score-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 8px;
+        gap: 10px;
+    }
+    .score-title {
+        font-size: 14px;
+        font-weight: bold;
+    }
+    .score-value {
+        font-size: 18px;
+        font-weight: bold;
+    }
+    .progress {
+        width: 100%;
+        height: 12px;
+        background: #e5e7eb;
+        border-radius: 999px;
+        overflow: hidden;
+    }
+    .progress-bar {
+        height: 100%;
+        border-radius: 999px;
+    }
+    .progress-good { background: #16a34a; }
+    .progress-mid { background: #2563eb; }
+    .progress-warn { background: #ea580c; }
+    .search-result-list {
+        display: grid;
+        gap: 8px;
+        margin-top: 12px;
+        min-width: 0;
+    }
+    .search-result-item {
+        display: block;
+        text-decoration: none;
+        color: #111827;
+        background: white;
+        border: 1px solid #d8e0ea;
+        border-radius: 10px;
+        padding: 10px 12px;
+        font-size: 14px;
+        font-weight: bold;
+        min-width: 0;
+        word-break: keep-all;
+    }
+    .search-result-item small {
+        display: block;
+        color: #6b7280;
+        font-weight: normal;
+        margin-top: 4px;
+    }
+    @media (max-width: 1280px) {
+        .content-grid {
+            grid-template-columns: 1fr;
+        }
+        .two-col {
+            grid-template-columns: 1fr;
+        }
+    }
+    @media (max-width: 768px) {
+        .wrap {
+            padding: 12px;
+        }
+        .menu,
+        .quickbar {
+            padding: 10px;
+        }
+        .topbar {
+            font-size: 22px;
+            padding: 14px 16px;
+        }
+        th, td {
+            font-size: 13px;
+            padding: 10px 8px;
+        }
     }
 </style>
 </head>
@@ -959,13 +1117,13 @@ BASE_HTML = """
 
     <div class="menu">
         <a href="/" class="{{ 'active' if active=='home' else '' }}">메인</a>
-        <a href="/our-businesses" class="{{ 'active' if active=='our_businesses' else '' }}">우리사업자관리</a>
         <a href="/client-companies" class="{{ 'active' if active=='client_companies' else '' }}">거래처관리</a>
         <a href="/employees" class="{{ 'active' if active=='employees' else '' }}">인력관리</a>
         <a href="/attendance" class="{{ 'active' if active=='attendance' else '' }}">출퇴근관리</a>
         <a href="/records" class="{{ 'active' if active=='records' else '' }}">기록조회</a>
         <a href="/payroll" class="{{ 'active' if active=='payroll' else '' }}">급여관리</a>
         <a href="/settings" class="{{ 'active' if active=='settings' else '' }}">설정</a>
+        <a href="/our-businesses" class="{{ 'active' if active=='our_businesses' else '' }}">사업자관리</a>
     </div>
 
     {% if quick_links %}
@@ -1027,6 +1185,10 @@ def home() -> str:
     current_date = request.args.get("work_date", today_str())
     client_company_raw = request.args.get("client_company_id", "")
     client_company_id = int(client_company_raw) if client_company_raw.isdigit() else None
+    employee_keyword = request.args.get("employee_keyword", "").strip()
+    selected_employee_raw = request.args.get("selected_employee_id", "")
+    selected_employee_id = int(selected_employee_raw) if selected_employee_raw.isdigit() else None
+
     filtered_employees = get_employees_by_client_company(client_company_id)
 
     total = len(filtered_employees)
@@ -1058,10 +1220,95 @@ def home() -> str:
         selected = "selected" if client_company_id == client.id else ""
         client_options.append(f'<option value="{client.id}" {selected}>{client.name}</option>')
 
+    search_query = Employee.query
+    if employee_keyword:
+        like_keyword = f"%{employee_keyword}%"
+        search_query = search_query.filter(Employee.name.ilike(like_keyword))
+
+    if client_company_id is not None:
+        search_query = search_query.filter_by(current_client_company_id=client_company_id)
+
+    searched_employees = search_query.order_by(Employee.name.asc()).limit(10).all()
+
+    if selected_employee_id is None and searched_employees:
+        selected_employee_id = searched_employees[0].id
+
+    selected_employee = get_employee(selected_employee_id) if selected_employee_id else None
+    scorecard = calculate_employee_scorecard(selected_employee_id) if selected_employee_id else None
+
+    search_results_html = ""
+    for employee in searched_employees:
+        active_class = ' style="border-color:#2563eb; background:#eff6ff;"' if selected_employee_id == employee.id else ""
+        search_results_html += f'''
+        <a class="search-result-item" href="/?work_date={current_date}&client_company_id={client_company_id or ''}&employee_keyword={employee_keyword}&selected_employee_id={employee.id}"{active_class}>
+            {employee.name}
+            <small>{employee.nationality} / {get_client_company_name(employee.current_client_company_id)} / {get_work_type_name(employee.work_type_id)}</small>
+        </a>
+        '''
+
+    if not search_results_html:
+        search_results_html = '<div class="muted">검색 결과가 없습니다.</div>'
+
+    score_html = """
+    <div class="muted">오른쪽에서 사원을 검색하면 평가 지표가 표시됩니다.</div>
+    """
+    if selected_employee and scorecard:
+        work_score = scorecard["work_score"]
+        sincerity_score = scorecard["sincerity_score"]
+        stability_score = scorecard["stability_score"]
+
+        score_html = f"""
+        <div class="score-box">
+            <div class="score-card">
+                <div class="score-head">
+                    <div class="score-title">일 잘함 지표</div>
+                    <div class="score-value">{work_score}점</div>
+                </div>
+                <div class="progress">
+                    <div class="progress-bar {score_bar_class(work_score)}" style="width:{work_score}%;"></div>
+                </div>
+                <div class="muted" style="margin-top:8px;">근무완료, 근무중, 연장근무 반영</div>
+            </div>
+
+            <div class="score-card">
+                <div class="score-head">
+                    <div class="score-title">성실도 지표</div>
+                    <div class="score-value">{sincerity_score}점</div>
+                </div>
+                <div class="progress">
+                    <div class="progress-bar {score_bar_class(sincerity_score)}" style="width:{sincerity_score}%;"></div>
+                </div>
+                <div class="muted" style="margin-top:8px;">출근 유지, 결근 감소, 휴가 처리 반영</div>
+            </div>
+
+            <div class="score-card">
+                <div class="score-head">
+                    <div class="score-title">현장 안정성 지표</div>
+                    <div class="score-value">{stability_score}점</div>
+                </div>
+                <div class="progress">
+                    <div class="progress-bar {score_bar_class(stability_score)}" style="width:{stability_score}%;"></div>
+                </div>
+                <div class="muted" style="margin-top:8px;">무단결근, 문제사유, 병원 빈도 반영</div>
+            </div>
+
+            <div class="panel" style="box-shadow:none; border-radius:14px;">
+                <div class="panel-body">
+                    <div><strong>선택 인력:</strong> {selected_employee.name}</div>
+                    <div class="muted" style="margin-top:6px;">
+                        {selected_employee.nationality} / {get_our_business_name(selected_employee.our_business_id)} / {get_client_company_name(selected_employee.current_client_company_id)}
+                    </div>
+                    <div class="muted" style="margin-top:6px;">
+                        분석 기록 수: {scorecard["record_count"]}건
+                    </div>
+                </div>
+            </div>
+        </div>
+        """
+
     content = f"""
     <div class="notice">
-        데이터는 이제 SQLite DB 파일에 저장됩니다.
-        앱을 다시 켜도 유지됩니다.
+        데이터는 SQLite DB 파일에 저장됩니다. 앱을 다시 켜도 유지됩니다.
     </div>
 
     <form method="get" class="panel" style="margin-bottom:18px;">
@@ -1092,26 +1339,63 @@ def home() -> str:
         <div class="card"><div class="label">결근</div><div class="value">{absent_count}</div></div>
     </div>
 
-    <div class="panel">
-        <div class="panel-head">
-            <h2>인력 현황</h2>
-            <p>{current_date} 기준</p>
+    <div class="content-grid">
+        <div class="panel">
+            <div class="panel-head">
+                <h2>인력현황</h2>
+                <p>{current_date} 기준</p>
+            </div>
+            <div class="panel-body">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>번호</th>
+                            <th>이름</th>
+                            <th>국적</th>
+                            <th>사업자</th>
+                            <th>거래처</th>
+                            <th>근무타입</th>
+                            <th>상태</th>
+                        </tr>
+                    </thead>
+                    <tbody>{rows}</tbody>
+                </table>
+            </div>
         </div>
-        <div class="panel-body">
-            <table>
-                <thead>
-                    <tr>
-                        <th>번호</th>
-                        <th>이름</th>
-                        <th>국적</th>
-                        <th>우리사업자</th>
-                        <th>거래처</th>
-                        <th>근무타입</th>
-                        <th>상태</th>
-                    </tr>
-                </thead>
-                <tbody>{rows}</tbody>
-            </table>
+
+        <div>
+            <div class="panel" style="margin-bottom:18px;">
+                <div class="panel-head">
+                    <h2>사원 검색 / 지표</h2>
+                    <p>인력현황 오른쪽 분석 영역</p>
+                </div>
+                <div class="panel-body">
+                    <form method="get">
+                        <input type="hidden" name="work_date" value="{current_date}">
+                        <input type="hidden" name="client_company_id" value="{client_company_id or ''}">
+                        <label>사원 이름 검색</label>
+                        <input name="employee_keyword" value="{employee_keyword}" placeholder="예: 성조, 응우옌">
+                        <div class="actions">
+                            <button class="btn btn-primary" type="submit">검색</button>
+                            <a class="btn btn-white" href="/?work_date={current_date}&client_company_id={client_company_id or ''}">초기화</a>
+                        </div>
+                    </form>
+
+                    <div class="search-result-list">
+                        {search_results_html}
+                    </div>
+                </div>
+            </div>
+
+            <div class="panel">
+                <div class="panel-head">
+                    <h2>인력 성향 지표</h2>
+                    <p>근태 기록 기반 참고용 점수</p>
+                </div>
+                <div class="panel-body">
+                    {score_html}
+                </div>
+            </div>
         </div>
     </div>
     """
@@ -1135,12 +1419,12 @@ def our_businesses_page() -> str:
     content = f"""
     <div class="panel">
         <div class="panel-head">
-            <h2>우리사업자목록</h2>
+            <h2>사업자목록</h2>
             <p>우리측 운영 사업자 관리</p>
         </div>
         <div class="panel-body">
             <div class="actions" style="margin-top:0; margin-bottom:16px;">
-                <a class="btn btn-primary" href="/our-businesses/new">+ 우리사업자등록</a>
+                <a class="btn btn-primary" href="/our-businesses/new">+ 사업자등록</a>
             </div>
             <table>
                 <thead>
@@ -1158,10 +1442,10 @@ def our_businesses_page() -> str:
     </div>
     """
     quick = [
-        {"label": "우리사업자목록", "href": "/our-businesses"},
-        {"label": "우리사업자등록", "href": "/our-businesses/new"},
+        {"label": "사업자목록", "href": "/our-businesses"},
+        {"label": "사업자등록", "href": "/our-businesses/new"},
     ]
-    return render_page("우리사업자관리", "our_businesses", content, quick)
+    return render_page("사업자관리", "our_businesses", content, quick)
 
 
 @app.route("/our-businesses/new", methods=["GET", "POST"])
@@ -1188,7 +1472,7 @@ def our_business_new() -> str:
     content = """
     <div class="panel">
         <div class="panel-head">
-            <h2>우리사업자등록</h2>
+            <h2>사업자등록</h2>
             <p>우리측 운영 사업자 등록</p>
         </div>
         <div class="panel-body">
@@ -1220,24 +1504,24 @@ def our_business_new() -> str:
     </div>
     """
     quick = [
-        {"label": "우리사업자목록", "href": "/our-businesses"},
-        {"label": "우리사업자등록", "href": "/our-businesses/new"},
+        {"label": "사업자목록", "href": "/our-businesses"},
+        {"label": "사업자등록", "href": "/our-businesses/new"},
     ]
-    return render_page("우리사업자등록", "our_businesses", content, quick)
+    return render_page("사업자등록", "our_businesses", content, quick)
 
 
 @app.route("/our-businesses/<int:our_business_id>")
 def our_business_detail(our_business_id: int) -> str:
     item = get_our_business(our_business_id)
     if not item:
-        return "우리사업자를 찾을 수 없습니다.", 404
+        return "사업자를 찾을 수 없습니다.", 404
 
     client_count = ClientCompany.query.filter_by(our_business_id=our_business_id).count()
 
     content = f"""
     <div class="panel">
         <div class="panel-head">
-            <h2>우리사업자상세</h2>
+            <h2>사업자상세</h2>
             <p>{item.name}</p>
         </div>
         <div class="panel-body">
@@ -1258,10 +1542,10 @@ def our_business_detail(our_business_id: int) -> str:
     </div>
     """
     quick = [
-        {"label": "우리사업자목록", "href": "/our-businesses"},
-        {"label": "우리사업자등록", "href": "/our-businesses/new"},
+        {"label": "사업자목록", "href": "/our-businesses"},
+        {"label": "사업자등록", "href": "/our-businesses/new"},
     ]
-    return render_page("우리사업자상세", "our_businesses", content, quick)
+    return render_page("사업자상세", "our_businesses", content, quick)
 
 
 @app.route("/client-companies")
@@ -1283,7 +1567,7 @@ def client_companies_page() -> str:
     <div class="panel">
         <div class="panel-head">
             <h2>거래처목록</h2>
-            <p>우리사업자 소속 거래처 사업자 관리</p>
+            <p>사업자 소속 거래처 사업자 관리</p>
         </div>
         <div class="panel-body">
             <div class="actions" style="margin-top:0; margin-bottom:16px;">
@@ -1293,7 +1577,7 @@ def client_companies_page() -> str:
                 <thead>
                     <tr>
                         <th>번호</th>
-                        <th>우리사업자</th>
+                        <th>사업자</th>
                         <th>거래처명</th>
                         <th>사업자등록번호</th>
                         <th>대표전화</th>
@@ -1371,12 +1655,12 @@ def client_company_new() -> str:
     <div class="panel">
         <div class="panel-head">
             <h2>거래처등록</h2>
-            <p>우리사업자 소속 거래처 사업자 등록</p>
+            <p>사업자 소속 거래처 사업자 등록</p>
         </div>
         <div class="panel-body">
             <form method="post">
                 <div class="form-grid">
-                    <div><label>우리사업자</label><select name="our_business_id">{business_options}</select></div>
+                    <div><label>사업자</label><select name="our_business_id">{business_options}</select></div>
                     <div><label>거래처명</label><input name="name" required></div>
                     <div><label>대표자명</label><input name="ceo_name" required></div>
                     <div><label>사업자등록번호</label><input name="business_number" required></div>
@@ -1426,7 +1710,7 @@ def client_company_detail(client_company_id: int) -> str:
         </div>
         <div class="panel-body">
             <table>
-                <tr><th style="width:220px;">우리사업자</th><td>{get_our_business_name(item.our_business_id)}</td></tr>
+                <tr><th style="width:220px;">사업자</th><td>{get_our_business_name(item.our_business_id)}</td></tr>
                 <tr><th>거래처명</th><td>{item.name}</td></tr>
                 <tr><th>대표자명</th><td>{item.ceo_name}</td></tr>
                 <tr><th>사업자등록번호</th><td>{item.business_number}</td></tr>
@@ -1496,7 +1780,7 @@ def employees_page() -> str:
     <div class="panel">
         <div class="panel-head">
             <h2>인력목록</h2>
-            <p>우리사업자 / 거래처 / 근무타입 기준 관리</p>
+            <p>사업자 / 거래처 / 근무타입 기준 관리</p>
         </div>
         <div class="panel-body">
             <div class="actions" style="margin-top:0; margin-bottom:16px;">
@@ -1508,7 +1792,7 @@ def employees_page() -> str:
                         <th>번호</th>
                         <th>이름</th>
                         <th>국적</th>
-                        <th>우리사업자</th>
+                        <th>사업자</th>
                         <th>거래처</th>
                         <th>근무타입</th>
                         <th>급여형태</th>
@@ -1531,14 +1815,14 @@ def employees_page() -> str:
 def employee_new() -> str:
     businesses = OurBusiness.query.order_by(OurBusiness.id.asc()).all()
     if not businesses:
-        return "먼저 우리사업자를 등록하세요.", 400
+        return "먼저 사업자를 등록하세요.", 400
 
     selected_our_business_raw = request.values.get("our_business_id", str(businesses[0].id))
     selected_our_business_id = int(selected_our_business_raw) if selected_our_business_raw.isdigit() else businesses[0].id
 
     clients = ClientCompany.query.filter_by(our_business_id=selected_our_business_id).order_by(ClientCompany.id.asc()).all()
     if not clients:
-        return "선택한 우리사업자의 거래처가 없습니다. 먼저 거래처를 등록하세요.", 400
+        return "선택한 사업자의 거래처가 없습니다. 먼저 거래처를 등록하세요.", 400
 
     selected_client_raw = request.values.get("client_company_id", str(clients[0].id))
     selected_client_company_id = int(selected_client_raw) if selected_client_raw.isdigit() else clients[0].id
@@ -1572,14 +1856,14 @@ def employee_new() -> str:
     <div class="panel">
         <div class="panel-head">
             <h2>인력등록</h2>
-            <p>우리사업자와 거래처에 배치되는 인력 등록</p>
+            <p>사업자와 거래처에 배치되는 인력 등록</p>
         </div>
         <div class="panel-body">
             <form method="get" class="panel" style="box-shadow:none; border-radius:14px; margin-bottom:16px;">
                 <div class="panel-body">
                     <div class="form-grid">
                         <div>
-                            <label>우리사업자</label>
+                            <label>사업자</label>
                             <select name="our_business_id" onchange="this.form.submit()">{business_options}</select>
                         </div>
                         <div>
@@ -1594,7 +1878,7 @@ def employee_new() -> str:
                 <input type="hidden" name="our_business_id" value="{selected_our_business_id}">
                 <input type="hidden" name="client_company_id" value="{selected_client_company_id}">
                 <div class="form-grid">
-                    <div><label>우리사업자</label><input value="{get_our_business_name(selected_our_business_id)}" disabled></div>
+                    <div><label>사업자</label><input value="{get_our_business_name(selected_our_business_id)}" disabled></div>
                     <div><label>거래처</label><input value="{get_client_company_name(selected_client_company_id)}" disabled></div>
                     <div><label>이름</label><input name="name" required></div>
                     <div><label>국적</label><input name="nationality" required></div>
@@ -1699,7 +1983,7 @@ def employee_detail(employee_id: int) -> str:
                     <table>
                         <tr><th style="width:220px;">이름</th><td>{employee.name}</td></tr>
                         <tr><th>국적</th><td>{employee.nationality}</td></tr>
-                        <tr><th>우리사업자</th><td>{get_our_business_name(employee.our_business_id)}</td></tr>
+                        <tr><th>사업자</th><td>{get_our_business_name(employee.our_business_id)}</td></tr>
                         <tr><th>거래처</th><td>{get_client_company_name(employee.current_client_company_id)}</td></tr>
                         <tr><th>근무타입</th><td>{get_work_type_name(employee.work_type_id)}</td></tr>
                         <tr><th>연락처</th><td>{employee.phone or '-'}</td></tr>
@@ -1889,7 +2173,7 @@ def attendance_page() -> str:
                         <tr>
                             <th>이름</th>
                             <th>국적</th>
-                            <th>우리사업자</th>
+                            <th>사업자</th>
                             <th>거래처</th>
                             <th>근무타입</th>
                             <th>상태</th>
@@ -2115,7 +2399,7 @@ def records_page() -> str:
                             <th>날짜</th>
                             <th>이름</th>
                             <th>국적</th>
-                            <th>우리사업자</th>
+                            <th>사업자</th>
                             <th>거래처</th>
                             <th>근무타입</th>
                             <th>출근</th>
@@ -2184,6 +2468,8 @@ def payroll_page() -> str:
         selected = "selected" if client.id == selected_client_company_id else ""
         client_options.append(f'<option value="{client.id}" {selected}>{client.name}</option>')
 
+    selected_client = get_client_company(selected_client_company_id)
+
     content = f"""
     <div class="panel" style="margin-bottom:18px;">
         <div class="panel-body">
@@ -2204,7 +2490,7 @@ def payroll_page() -> str:
     </div>
 
     <div class="cards">
-        <div class="card"><div class="label">우리사업자</div><div class="value" style="font-size:22px;">{get_our_business_name(get_client_company(selected_client_company_id).our_business_id if get_client_company(selected_client_company_id) else None)}</div></div>
+        <div class="card"><div class="label">사업자</div><div class="value" style="font-size:22px;">{get_our_business_name(selected_client.our_business_id if selected_client else None)}</div></div>
         <div class="card"><div class="label">거래처</div><div class="value" style="font-size:22px;">{get_client_company_name(selected_client_company_id)}</div></div>
         <div class="card"><div class="label">대상 월</div><div class="value" style="font-size:22px;">{selected_month}</div></div>
         <div class="card"><div class="label">대상 인력</div><div class="value">{len(filtered_employees)}</div></div>
