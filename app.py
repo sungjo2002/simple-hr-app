@@ -1,15 +1,3 @@
-TL;DR
-
-* 이제 데이터가 **메모리 리스트가 아니라 SQLite DB 파일에 저장**됩니다.
-* 앱 재시작 후에도 유지됩니다.
-* 아래 2개를 바꾸면 됩니다.
-
-  * `app.py` 전체 교체
-  * `requirements.txt` 교체
-
-`app.py`
-
-```python
 from __future__ import annotations
 
 from calendar import monthrange
@@ -2289,25 +2277,3 @@ with app.app_context():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
-```
-
-`requirements.txt`
-
-```txt
-Flask==3.0.3
-Flask-SQLAlchemy==3.1.1
-gunicorn==22.0.0
-SQLAlchemy==2.0.36
-```
-
-주의할 점
-
-* 이 버전은 **SQLite 파일(`instance/hr.db`)** 에 저장됩니다.
-* 로컬에서는 재시작해도 유지됩니다.
-* Render에서는 **디스크가 영구 저장이 아니라서** 재배포/재생성 시 사라질 수 있습니다.
-* Render 운영용 영구 저장은 다음 단계에서 **PostgreSQL**로 바꾸는 게 맞습니다.
-
-다음 단계
-
-**a.** Render에서도 안 사라지게 `PostgreSQL` 연결 버전으로 바꾸기
-**b.** 이 DB 구조에 맞춰 `employee_assignments` 배치 이력 테이블까지 추가하기
