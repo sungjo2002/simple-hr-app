@@ -3,8 +3,14 @@ from datetime import datetime
 
 app = Flask(__name__)
 
-today_str = datetime.now().strftime("%Y-%m-%d")
 
+def today_str() -> str:
+    return datetime.now().strftime("%Y-%m-%d")
+
+
+# ----------------------------
+# 테스트용 메모리 데이터
+# ----------------------------
 companies = [
     {
         "id": 1,
@@ -23,9 +29,28 @@ employees = [
     {"id": 3, "company_id": 1, "name": "알리", "nationality": "우즈베키스탄", "work_type": "주간", "status": "퇴근완료"},
 ]
 
-attendance_records = []
+attendance_records = [
+    {
+        "employee_id": 1,
+        "date": today_str(),
+        "work_type": "주간",
+        "check_in": "08:55:00",
+        "check_out": "",
+        "status": "근무중",
+        "reason": "",
+    },
+    {
+        "employee_id": 3,
+        "date": today_str(),
+        "work_type": "주간",
+        "check_in": "08:50:00",
+        "check_out": "18:02:00",
+        "status": "퇴근완료",
+        "reason": "",
+    },
+]
 
-BASE = """
+BASE_HTML = """
 <!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -77,7 +102,7 @@ BASE = """
         flex-wrap: wrap;
         gap: 8px;
     }
-    .quickbar a, .quickbar button {
+    .quickbar a {
         text-decoration: none;
         border: 1px solid #c8d0da;
         background: white;
@@ -86,10 +111,9 @@ BASE = """
         padding: 10px 14px;
         font-weight: bold;
         font-size: 13px;
-        cursor: pointer;
     }
     .wrap {
-        max-width: 1350px;
+        max-width: 1400px;
         margin: 0 auto;
         padding: 20px;
     }
@@ -169,6 +193,7 @@ BASE = """
     .green { background: #dcfce7; color: #166534; }
     .blue { background: #dbeafe; color: #1d4ed8; }
     .yellow { background: #fef3c7; color: #92400e; }
+    .orange { background: #ffedd5; color: #9a3412; }
     .gray { background: #e5e7eb; color: #374151; }
     .btn {
         display: inline-block;
@@ -183,6 +208,7 @@ BASE = """
     .btn-primary { background: #2563eb; color: white; }
     .btn-green { background: #16a34a; color: white; }
     .btn-sky { background: #0284c7; color: white; }
+    .btn-orange { background: #ea580c; color: white; }
     .btn-gray { background: #4b5563; color: white; }
     .btn-white { background: white; color: #111827; border: 1px solid #c8d0da; }
     .form-grid {
@@ -232,17 +258,6 @@ BASE = """
         margin: 0 0 12px;
         font-size: 18px;
     }
-    .side-box a {
-        display: block;
-        text-decoration: none;
-        color: #111827;
-        background: #f8fafc;
-        border: 1px solid #d7dee7;
-        border-radius: 10px;
-        padding: 10px 12px;
-        margin-bottom: 8px;
-        font-size: 14px;
-    }
     .photo-box {
         height: 220px;
         border: 2px dashed #cbd5e1;
@@ -275,6 +290,30 @@ BASE = """
         color: white;
         border-color: #111827;
     }
+    .month-grid {
+        overflow-x: auto;
+    }
+    .month-grid table th, .month-grid table td {
+        text-align: center;
+        min-width: 42px;
+        white-space: nowrap;
+    }
+    .month-grid table th.name-col, .month-grid table td.name-col {
+        text-align: left;
+        min-width: 110px;
+        position: sticky;
+        left: 0;
+        background: white;
+        z-index: 1;
+    }
+    .month-grid table th.nation-col, .month-grid table td.nation-col {
+        text-align: left;
+        min-width: 90px;
+        position: sticky;
+        left: 110px;
+        background: white;
+        z-index: 1;
+    }
     @media (max-width: 1100px) {
         .cards { grid-template-columns: 1fr 1fr; }
         .content-grid, .two-col { grid-template-columns: 1fr; }
@@ -291,6 +330,7 @@ BASE = """
         <a href="/employees" class="{{ 'active' if active=='employees' else '' }}">사원관리</a>
         <a href="/attendance" class="{{ 'active' if active=='attendance' else '' }}">출퇴근관리</a>
         <a href="/records" class="{{ 'active' if active=='records' else '' }}">기록조회</a>
+        <a href="/payroll" class="{{ 'active' if active=='payroll' else '' }}">급여관리</a>
         <a href="/settings" class="{{ 'active' if active=='settings' else '' }}">설정</a>
     </div>
 
@@ -309,26 +349,37 @@ BASE = """
 </html>
 """
 
+
 def render_page(title, active, content, quick_links=None):
     return render_template_string(
-        BASE,
+        BASE_HTML,
         title=title,
         active=active,
         content=content,
         quick_links=quick_links or [],
     )
 
-def status_badge(status):
+
+def status_badge(status: str) -> str:
     if status == "근무중":
         return '<span class="badge green">근무중</span>'
     if status == "출근전":
         return '<span class="badge yellow">출근전</span>'
     if status == "퇴근완료":
         return '<span class="badge blue">퇴근완료</span>'
+    if status == "병원":
+        return '<span class="badge orange">병원</span>'
     return f'<span class="badge gray">{status}</span>'
+
+
+def get_company_name(company_id: int) -> str:
+    company = next((c for c in companies if c["id"] == company_id), None)
+    return company["name"] if company else "-"
+
 
 @app.route("/")
 def home():
+    current_date = today_str()
     total = len(employees)
     day_count = len([e for e in employees if e["work_type"] == "주간" and e["status"] == "근무중"])
     night_count = len([e for e in employees if e["work_type"] == "야간" and e["status"] == "근무중"])
@@ -350,8 +401,8 @@ def home():
     content = f"""
     <div class="cards">
         <div class="card"><div class="label">전체 사원</div><div class="value">{total}</div></div>
-        <div class="card"><div class="label">오늘({today_str}) 주간 근무중</div><div class="value">{day_count}</div></div>
-        <div class="card"><div class="label">오늘({today_str}) 야간 근무중</div><div class="value">{night_count}</div></div>
+        <div class="card"><div class="label">오늘({current_date}) 주간 근무중</div><div class="value">{day_count}</div></div>
+        <div class="card"><div class="label">오늘({current_date}) 야간 근무중</div><div class="value">{night_count}</div></div>
         <div class="card"><div class="label">출근전</div><div class="value">{before_count}</div></div>
         <div class="card"><div class="label">퇴근완료</div><div class="value">{done_count}</div></div>
     </div>
@@ -373,9 +424,7 @@ def home():
                             <th>상태</th>
                         </tr>
                     </thead>
-                    <tbody>
-                        {rows}
-                    </tbody>
+                    <tbody>{rows}</tbody>
                 </table>
             </div>
         </div>
@@ -391,6 +440,7 @@ def home():
                         <a class="btn btn-primary" href="/employees/new">사원등록</a>
                         <a class="btn btn-green" href="/attendance">출근처리</a>
                         <a class="btn btn-sky" href="/attendance">퇴근처리</a>
+                        <a class="btn btn-orange" href="/attendance">병원처리</a>
                         <a class="btn btn-gray" href="/records">기록조회</a>
                     </div>
                 </div>
@@ -412,6 +462,7 @@ def home():
     </div>
     """
     return render_page("메인", "home", content)
+
 
 @app.route("/companies")
 def companies_page():
@@ -457,6 +508,7 @@ def companies_page():
         {"label": "회사등록", "href": "/companies/new"},
     ]
     return render_page("회사관리", "companies", content, quick)
+
 
 @app.route("/companies/new", methods=["GET", "POST"])
 def company_new():
@@ -512,6 +564,7 @@ def company_new():
     ]
     return render_page("회사등록", "companies", content, quick)
 
+
 @app.route("/companies/<int:company_id>")
 def company_detail(company_id):
     company = next((c for c in companies if c["id"] == company_id), None)
@@ -545,6 +598,7 @@ def company_detail(company_id):
     ]
     return render_page("회사상세", "companies", content, quick)
 
+
 @app.route("/companies/<int:company_id>/settings")
 def company_settings(company_id):
     company = next((c for c in companies if c["id"] == company_id), None)
@@ -568,9 +622,10 @@ def company_settings(company_id):
                 <a href="#">출퇴기준설정</a>
                 <a href="#">문서설정</a>
                 <a href="#">권한설정</a>
+                <a href="#">급여설정</a>
             </div>
 
-            <div class="panel" style="box-shadow:none; border-radius:14px;">
+            <div class="panel" style="box-shadow:none; border-radius:14px; margin-bottom:16px;">
                 <div class="panel-head">
                     <h2 style="font-size:18px;">근무타입설정</h2>
                     <p>회사마다 근무 구분 기준이 다름</p>
@@ -588,6 +643,23 @@ def company_settings(company_id):
                     </table>
                 </div>
             </div>
+
+            <div class="panel" style="box-shadow:none; border-radius:14px;">
+                <div class="panel-head">
+                    <h2 style="font-size:18px;">급여설정</h2>
+                    <p>회사별 다른 급여 기준</p>
+                </div>
+                <div class="panel-body">
+                    <div class="form-grid">
+                        <div><label>급여형태</label><select><option>월급제</option><option>일급제</option><option>시급제</option></select></div>
+                        <div><label>기본급</label><input value="2000000"></div>
+                        <div><label>일급</label><input value="100000"></div>
+                        <div><label>시급</label><input value="9860"></div>
+                        <div><label>야간수당 배율</label><input value="1.5"></div>
+                        <div><label>연장수당 배율</label><input value="1.5"></div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
     """
@@ -598,11 +670,12 @@ def company_settings(company_id):
     ]
     return render_page("회사별 설정", "companies", content, quick)
 
+
 @app.route("/employees")
 def employees_page():
     rows = ""
     for e in employees:
-        company_name = next((c["name"] for c in companies if c["id"] == e["company_id"]), "-")
+        company_name = get_company_name(e["company_id"])
         rows += f"""
         <tr>
             <td>{e['id']}</td>
@@ -644,6 +717,7 @@ def employees_page():
         {"label": "사원목록", "href": "/employees"},
     ]
     return render_page("사원관리", "employees", content, quick)
+
 
 @app.route("/employees/new", methods=["GET", "POST"])
 def employee_new():
@@ -690,6 +764,7 @@ def employee_new():
     ]
     return render_page("사원등록", "employees", content, quick)
 
+
 @app.route("/employees/<int:employee_id>")
 def employee_detail(employee_id):
     employee = next((e for e in employees if e["id"] == employee_id), None)
@@ -712,7 +787,7 @@ def employee_detail(employee_id):
     if not rec_rows:
         rec_rows = '<tr><td colspan="6">기록이 없습니다.</td></tr>'
 
-    company_name = next((c["name"] for c in companies if c["id"] == employee["company_id"]), "-")
+    company_name = get_company_name(employee["company_id"])
 
     content = f"""
     <div class="two-col">
@@ -788,48 +863,74 @@ def employee_detail(employee_id):
     ]
     return render_page("사원상세", "employees", content, quick)
 
+
 @app.route("/attendance", methods=["GET", "POST"])
 def attendance_page():
+    selected_date = request.values.get("work_date", today_str())
+
     if request.method == "POST":
         employee_id = int(request.form["employee_id"])
         action_type = request.form["action_type"]
+        selected_date = request.form["work_date"]
+        reason = request.form.get("reason", "").strip()
 
         emp = next((e for e in employees if e["id"] == employee_id), None)
         if emp:
             now = datetime.now().strftime("%H:%M:%S")
-            date_now = datetime.now().strftime("%Y-%m-%d")
 
             if action_type == "checkin":
                 attendance_records.append({
                     "employee_id": employee_id,
-                    "date": date_now,
+                    "date": selected_date,
                     "work_type": emp["work_type"],
                     "check_in": now,
                     "check_out": "",
                     "status": "근무중",
+                    "reason": "",
                 })
                 emp["status"] = "근무중"
 
-            if action_type == "checkout":
+            elif action_type == "checkout":
                 for record in reversed(attendance_records):
-                    if record["employee_id"] == employee_id and not record["check_out"]:
+                    if record["employee_id"] == employee_id and record["date"] == selected_date and not record["check_out"]:
                         record["check_out"] = now
                         record["status"] = "퇴근완료"
                         emp["status"] = "퇴근완료"
                         break
 
-        return redirect(url_for("attendance_page"))
+            elif action_type == "hospital":
+                attendance_records.append({
+                    "employee_id": employee_id,
+                    "date": selected_date,
+                    "work_type": emp["work_type"],
+                    "check_in": "",
+                    "check_out": "",
+                    "status": "병원",
+                    "reason": reason or "병원 진료",
+                })
+                emp["status"] = "병원"
 
-    employee_options = "".join([f'<option value="{e["id"]}">{e["name"]} / {e["nationality"]} / {e["work_type"]}</option>' for e in employees])
+        return redirect(url_for("attendance_page", work_date=selected_date))
+
+    employee_options = "".join([
+        f'<option value="{e["id"]}">{e["name"]} / {e["nationality"]} / {e["work_type"]}</option>'
+        for e in employees
+    ])
 
     rows = ""
     for e in employees:
+        record = next((r for r in reversed(attendance_records) if r["employee_id"] == e["id"] and r["date"] == selected_date), None)
+        check_in = record["check_in"] if record else "-"
+        check_out = record["check_out"] if record and record["check_out"] else "-"
+        status = record["status"] if record else e["status"]
         rows += f"""
         <tr>
             <td>{e['name']}</td>
             <td>{e['nationality']}</td>
             <td>{e['work_type']}</td>
-            <td>{status_badge(e['status'])}</td>
+            <td>{status_badge(status)}</td>
+            <td>{check_in}</td>
+            <td>{check_out}</td>
         </tr>
         """
 
@@ -838,9 +939,22 @@ def attendance_page():
         <div class="panel">
             <div class="panel-head">
                 <h2>오늘 출퇴현황</h2>
-                <p>관리자가 직접 처리</p>
+                <p>날짜 기준으로 조회 및 처리</p>
             </div>
             <div class="panel-body">
+                <form method="get" class="actions" style="margin-top:0; margin-bottom:16px; align-items:end;">
+                    <div style="min-width:220px;">
+                        <label>날짜 선택</label>
+                        <input type="date" name="work_date" value="{selected_date}">
+                    </div>
+                    <div>
+                        <button class="btn btn-white" type="submit">조회</button>
+                    </div>
+                    <div>
+                        <a class="btn btn-white" href="/attendance?work_date={today_str()}">오늘</a>
+                    </div>
+                </form>
+
                 <table>
                     <thead>
                         <tr>
@@ -848,6 +962,8 @@ def attendance_page():
                             <th>국적</th>
                             <th>근무타입</th>
                             <th>상태</th>
+                            <th>출근</th>
+                            <th>퇴근</th>
                         </tr>
                     </thead>
                     <tbody>{rows}</tbody>
@@ -857,7 +973,7 @@ def attendance_page():
 
         <div class="panel">
             <div class="panel-head">
-                <h2>출근 / 퇴근 처리</h2>
+                <h2>출근 / 퇴근 / 병원 처리</h2>
                 <p>직원이 아니라 관리자가 처리</p>
             </div>
             <div class="panel-body">
@@ -865,11 +981,18 @@ def attendance_page():
                     <label>사원 선택</label>
                     <select name="employee_id">{employee_options}</select>
 
+                    <label>날짜</label>
+                    <input type="date" name="work_date" value="{selected_date}">
+
                     <label>처리 구분</label>
                     <select name="action_type">
                         <option value="checkin">출근처리</option>
                         <option value="checkout">퇴근처리</option>
+                        <option value="hospital">병원처리</option>
                     </select>
+
+                    <label>사유 / 메모</label>
+                    <input name="reason" placeholder="병원처리 시 메모 입력">
 
                     <div class="actions">
                         <button class="btn btn-green" type="submit">저장</button>
@@ -885,12 +1008,38 @@ def attendance_page():
     ]
     return render_page("출퇴근관리", "attendance", content, quick)
 
+
 @app.route("/records")
 def records_page():
+    days = list(range(1, 32))
+    month_rows = ""
+    for emp in employees:
+        month_rows += f'<tr><td class="name-col"><a href="/employees/{emp["id"]}">{emp["name"]}</a></td><td class="nation-col">{emp["nationality"]}</td>'
+        present_cnt = 0
+        hospital_cnt = 0
+        absent_cnt = 0
+        off_cnt = 0
+        for d in days:
+            if d in [6, 7, 13, 14, 20, 21, 27, 28]:
+                mark = "-"
+                off_cnt += 1
+            elif d == 3 and emp["id"] == 2:
+                mark = "H"
+                hospital_cnt += 1
+            elif d in [4, 10] and emp["id"] == 2:
+                mark = "X"
+                absent_cnt += 1
+            else:
+                mark = "O"
+                present_cnt += 1
+            month_rows += f"<td>{mark}</td>"
+        month_rows += f"<td>{present_cnt}</td><td>{hospital_cnt}</td><td>{absent_cnt}</td><td>{off_cnt}</td></tr>"
+
     rows = ""
     for idx, r in enumerate(attendance_records, start=1):
         emp = next((e for e in employees if e["id"] == r["employee_id"]), None)
         name = emp["name"] if emp else "-"
+        reason = r.get("reason", "") or "-"
         rows += f"""
         <tr>
             <td>{idx}</td>
@@ -900,13 +1049,16 @@ def records_page():
             <td>{r['check_in'] or '-'}</td>
             <td>{r['check_out'] or '-'}</td>
             <td>{status_badge(r['status'])}</td>
+            <td>{reason}</td>
         </tr>
         """
     if not rows:
-        rows = '<tr><td colspan="7">아직 기록이 없습니다.</td></tr>'
+        rows = '<tr><td colspan="8">아직 기록이 없습니다.</td></tr>'
+
+    header_days = "".join([f"<th>{d}</th>" for d in days])
 
     content = f"""
-    <div class="panel">
+    <div class="panel" style="margin-bottom:18px;">
         <div class="panel-head">
             <h2>전체 출퇴기록</h2>
             <p>날짜 / 사원 / 근무타입 기준 조회</p>
@@ -922,6 +1074,102 @@ def records_page():
                         <th>출근</th>
                         <th>퇴근</th>
                         <th>상태</th>
+                        <th>사유</th>
+                    </tr>
+                </thead>
+                <tbody>{rows}</tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="panel">
+        <div class="panel-head">
+            <h2>월별 출석현황</h2>
+            <p>O=출근 / H=병원 / X=결근 / -=휴무</p>
+        </div>
+        <div class="panel-body month-grid">
+            <table>
+                <thead>
+                    <tr>
+                        <th class="name-col">이름</th>
+                        <th class="nation-col">국적</th>
+                        {header_days}
+                        <th>출근</th>
+                        <th>병원</th>
+                        <th>결근</th>
+                        <th>휴무</th>
+                    </tr>
+                </thead>
+                <tbody>{month_rows}</tbody>
+            </table>
+        </div>
+    </div>
+    """
+    quick = [
+        {"label": "전체 출퇴기록", "href": "/records"},
+        {"label": "월별 출석현황", "href": "/records"},
+    ]
+    return render_page("기록조회", "records", content, quick)
+
+
+@app.route("/payroll")
+def payroll_page():
+    rows = ""
+    for emp in employees:
+        work_days = 22 if emp["id"] != 2 else 20
+        hospital_days = 0 if emp["id"] != 2 else 1
+        absent_days = 0 if emp["id"] == 1 else 1
+        night_days = 2 if emp["work_type"] == "야간" else 0
+        overtime_hours = 5 if emp["id"] == 1 else 2
+        base_salary = 2000000
+        allowance = 150000 + (night_days * 50000) + (overtime_hours * 10000)
+        deduction = absent_days * 80000
+        final_pay = base_salary + allowance - deduction
+        rows += f"""
+        <tr>
+            <td><a href="#">{emp['name']}</a></td>
+            <td>{emp['nationality']}</td>
+            <td>{work_days}</td>
+            <td>{hospital_days}</td>
+            <td style="color:#b91c1c; font-weight:bold;">{absent_days}</td>
+            <td>{night_days}</td>
+            <td>{overtime_hours}h</td>
+            <td>{base_salary:,}</td>
+            <td>{allowance:,}</td>
+            <td>{deduction:,}</td>
+            <td style="font-weight:bold; color:#1d4ed8;">{final_pay:,}</td>
+        </tr>
+        """
+
+    content = f"""
+    <div class="panel">
+        <div class="panel-head">
+            <h2>급여대장</h2>
+            <p>출퇴근 기록을 기반으로 계산한 테스트 화면</p>
+        </div>
+        <div class="panel-body">
+            <div class="form-grid" style="margin-bottom:16px;">
+                <div><label>회사 선택</label><select><option>그린시스템</option></select></div>
+                <div><label>월 선택</label><input type="month" value="2026-04"></div>
+            </div>
+            <div class="actions" style="margin-top:0; margin-bottom:16px;">
+                <button class="btn btn-primary" type="button">급여 계산 실행</button>
+                <button class="btn btn-white" type="button">엑셀 다운로드</button>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>이름</th>
+                        <th>국적</th>
+                        <th>근무일수</th>
+                        <th>병원</th>
+                        <th>결근</th>
+                        <th>야간</th>
+                        <th>연장시간</th>
+                        <th>기본급</th>
+                        <th>수당</th>
+                        <th>공제</th>
+                        <th>실지급액</th>
                     </tr>
                 </thead>
                 <tbody>{rows}</tbody>
@@ -930,10 +1178,12 @@ def records_page():
     </div>
     """
     quick = [
-        {"label": "출퇴근관리", "href": "/attendance"},
-        {"label": "기록조회", "href": "/records"},
+        {"label": "급여대장", "href": "/payroll"},
+        {"label": "급여계산", "href": "/payroll"},
+        {"label": "사원별 급여조회", "href": "/payroll"},
     ]
-    return render_page("기록조회", "records", content, quick)
+    return render_page("급여관리", "payroll", content, quick)
+
 
 @app.route("/settings")
 def settings_page():
@@ -954,5 +1204,6 @@ def settings_page():
     """
     return render_page("설정", "settings", content)
 
+
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+    app.run(host="0.0.0.0", port=5000, debug=True)
