@@ -1060,31 +1060,6 @@ BASE_HTML = """
         font-size: 13px;
         font-weight: bold;
     }
-    .search-result-list {
-        display: grid;
-        gap: 8px;
-        margin-top: 12px;
-        min-width: 0;
-    }
-    .search-result-item {
-        display: block;
-        text-decoration: none;
-        color: #111827;
-        background: white;
-        border: 1px solid #d8e0ea;
-        border-radius: 10px;
-        padding: 10px 12px;
-        font-size: 14px;
-        font-weight: bold;
-        min-width: 0;
-        word-break: keep-all;
-    }
-    .search-result-item small {
-        display: block;
-        color: #6b7280;
-        font-weight: normal;
-        margin-top: 4px;
-    }
     @media (max-width: 1280px) {
         .content-grid,
         .home-grid {
@@ -1238,33 +1213,16 @@ def home() -> str:
         selected = "selected" if client_company_id == client.id else ""
         client_options.append(f'<option value="{client.id}" {selected}>{client.name}</option>')
 
-    search_query = Employee.query
+    matched_employees = get_employees_by_client_company(client_company_id)
     if employee_keyword:
-        like_keyword = f"%{employee_keyword}%"
-        search_query = search_query.filter(Employee.name.ilike(like_keyword))
-    if client_company_id is not None:
-        search_query = search_query.filter_by(current_client_company_id=client_company_id)
+        lowered = employee_keyword.lower()
+        matched_employees = [e for e in matched_employees if lowered in e.name.lower()]
 
-    searched_employees = search_query.order_by(Employee.name.asc()).limit(10).all()
-
-    if selected_employee_id is None and searched_employees:
-        selected_employee_id = searched_employees[0].id
+    if selected_employee_id is None and matched_employees:
+        selected_employee_id = matched_employees[0].id
 
     selected_employee = get_employee(selected_employee_id) if selected_employee_id else None
     scorecard = calculate_employee_scorecard(selected_employee_id) if selected_employee_id else None
-
-    search_results_html = ""
-    for employee in searched_employees:
-        active_class = ' style="border-color:#2563eb; background:#eff6ff;"' if selected_employee_id == employee.id else ""
-        search_results_html += f'''
-        <a class="search-result-item" href="/?work_date={current_date}&client_company_id={client_company_id or ''}&employee_keyword={employee_keyword}&selected_employee_id={employee.id}"{active_class}>
-            {employee.name}
-            <small>{employee.nationality} / {get_client_company_name(employee.current_client_company_id)} / {get_work_type_name(employee.work_type_id)}</small>
-        </a>
-        '''
-
-    if not search_results_html:
-        search_results_html = '<div class="muted">검색 결과가 없습니다.</div>'
 
     score_html = """
     <div class="muted">사원을 검색하면 지표가 표시됩니다.</div>
@@ -1348,10 +1306,6 @@ def home() -> str:
                             <a class="btn btn-white" href="/?work_date={current_date}&client_company_id={client_company_id or ''}">초기화</a>
                         </div>
                     </form>
-
-                    <div class="search-result-list">
-                        {search_results_html}
-                    </div>
                 </div>
             </div>
 
