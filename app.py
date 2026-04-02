@@ -1,6 +1,3 @@
-아래는 수정 반영된 `app.py` 전체입니다.
-
-```python
 from __future__ import annotations
 
 from calendar import monthrange
@@ -2557,11 +2554,3 @@ with app.app_context():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
-```
-
-변경 내용
-
-* 사원 검색하면 인력현황도 같이 필터링됩니다.
-* 검색 결과에서 선택한 사원은 인력현황 행도 같이 강조됩니다.
-* `사원검색`은 왼쪽 위, `지표`는 왼쪽 아래, `인력현황`은 오른쪽에 유지됩니다.
-* 지표는 세로 카드가 아니라 **가로 막대 그래프**로 바뀌었습니다.
