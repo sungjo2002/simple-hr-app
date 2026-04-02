@@ -1,6 +1,3 @@
-아래 파일로 **`app.py` 전체를 통째로 교체**하세요.
-
-```python
 from __future__ import annotations
 
 from calendar import monthrange
@@ -2392,7 +2389,3 @@ def settings_page() -> str:
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
-```
-
-이 파일로 교체하면 해결될 가능성이 가장 큽니다.
-그래도 에러가 나면 **에러 한 줄만** 보내주세요. 바로 그 줄 기준으로 잡겠습니다.
