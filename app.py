@@ -1,12 +1,29 @@
+TL;DR
+
+* 이제 데이터가 **메모리 리스트가 아니라 SQLite DB 파일에 저장**됩니다.
+* 앱 재시작 후에도 유지됩니다.
+* 아래 2개를 바꾸면 됩니다.
+
+  * `app.py` 전체 교체
+  * `requirements.txt` 교체
+
+`app.py`
+
+```python
 from __future__ import annotations
 
 from calendar import monthrange
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from flask import Flask, redirect, render_template_string, request, url_for
+from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import UniqueConstraint
 
 app = Flask(__name__)
+app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///hr.db"
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+db = SQLAlchemy(app)
 
 ATTENDANCE_STATUS = {
     "before_work": "출근전",
@@ -51,456 +68,267 @@ def month_str_default() -> str:
     return datetime.now().strftime("%Y-%m")
 
 
-companies: list[dict[str, Any]] = [
-    {
-        "id": 1,
-        "name": "그린시스템",
-        "ceo_name": "홍길동",
-        "business_number": "123-45-67890",
-        "phone": "02-1234-5678",
-        "address": "경북 경주시 예시로 101",
-        "business_type": "서비스업",
-        "business_item": "인력관리",
-        "email": "green@example.com",
-        "is_active": True,
-        "memo": "테스트 회사",
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-    {
-        "id": 2,
-        "name": "블루팩토리",
-        "ceo_name": "김대표",
-        "business_number": "234-56-78901",
-        "phone": "051-222-8899",
-        "address": "부산광역시 예시구 산업로 22",
-        "business_type": "제조업",
-        "business_item": "부품생산",
-        "email": "blue@example.com",
-        "is_active": True,
-        "memo": "",
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-    {
-        "id": 3,
-        "name": "스타물류",
-        "ceo_name": "박성호",
-        "business_number": "345-67-89012",
-        "phone": "031-555-1111",
-        "address": "경기도 화성시 물류로 77",
-        "business_type": "운수업",
-        "business_item": "물류센터",
-        "email": "star@example.com",
-        "is_active": True,
-        "memo": "주간/야간 운영",
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-    {
-        "id": 4,
-        "name": "한빛케어",
-        "ceo_name": "이선영",
-        "business_number": "456-78-90123",
-        "phone": "042-777-2020",
-        "address": "대전광역시 유성구 메디컬로 15",
-        "business_type": "서비스업",
-        "business_item": "간병지원",
-        "email": "hanbit@example.com",
-        "is_active": True,
-        "memo": "병원 파견 인력",
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-    {
-        "id": 5,
-        "name": "대성건업",
-        "ceo_name": "최대성",
-        "business_number": "567-89-01234",
-        "phone": "053-888-3030",
-        "address": "대구광역시 달서구 현장로 88",
-        "business_type": "건설업",
-        "business_item": "건설인력",
-        "email": "daesung@example.com",
-        "is_active": True,
-        "memo": "현장별 조 편성",
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-    {
-        "id": 6,
-        "name": "미래푸드",
-        "ceo_name": "정미래",
-        "business_number": "678-90-12345",
-        "phone": "032-444-6060",
-        "address": "인천광역시 남동구 식품로 9",
-        "business_type": "제조업",
-        "business_item": "식품가공",
-        "email": "miraefood@example.com",
-        "is_active": True,
-        "memo": "2교대 운영",
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-    {
-        "id": 7,
-        "name": "오션테크",
-        "ceo_name": "조현우",
-        "business_number": "789-01-23456",
-        "phone": "064-555-9090",
-        "address": "제주특별자치도 제주시 테크로 55",
-        "business_type": "제조업",
-        "business_item": "전자부품",
-        "email": "ocean@example.com",
-        "is_active": True,
-        "memo": "조별 생산라인",
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-]
+class OurBusiness(db.Model):
+    __tablename__ = "our_businesses"
 
-company_settings: list[dict[str, Any]] = [
-    {
-        "company_id": 1,
-        "attendance_open_time": "08:00",
-        "late_standard_time": "09:00",
-        "workday_standard_hours": 8,
-        "hospital_paid": True,
-        "document_view_policy": "sensitive_super_admin_only",
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-    {
-        "company_id": 2,
-        "attendance_open_time": "07:00",
-        "late_standard_time": "08:30",
-        "workday_standard_hours": 8,
-        "hospital_paid": False,
-        "document_view_policy": "sensitive_super_admin_only",
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-    {
-        "company_id": 3,
-        "attendance_open_time": "08:00",
-        "late_standard_time": "09:00",
-        "workday_standard_hours": 8,
-        "hospital_paid": True,
-        "document_view_policy": "sensitive_super_admin_only",
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-    {
-        "company_id": 4,
-        "attendance_open_time": "08:30",
-        "late_standard_time": "09:00",
-        "workday_standard_hours": 8,
-        "hospital_paid": True,
-        "document_view_policy": "sensitive_super_admin_only",
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-    {
-        "company_id": 5,
-        "attendance_open_time": "06:30",
-        "late_standard_time": "07:00",
-        "workday_standard_hours": 8,
-        "hospital_paid": False,
-        "document_view_policy": "sensitive_super_admin_only",
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-    {
-        "company_id": 6,
-        "attendance_open_time": "07:30",
-        "late_standard_time": "08:00",
-        "workday_standard_hours": 8,
-        "hospital_paid": True,
-        "document_view_policy": "sensitive_super_admin_only",
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-    {
-        "company_id": 7,
-        "attendance_open_time": "08:00",
-        "late_standard_time": "08:30",
-        "workday_standard_hours": 8,
-        "hospital_paid": False,
-        "document_view_policy": "sensitive_super_admin_only",
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-]
-
-company_work_types: list[dict[str, Any]] = [
-    {"id": 1, "company_id": 1, "name": "주간", "code": "DAY", "is_active": True},
-    {"id": 2, "company_id": 1, "name": "야간", "code": "NIGHT", "is_active": True},
-    {"id": 3, "company_id": 2, "name": "1조", "code": "A", "is_active": True},
-    {"id": 4, "company_id": 2, "name": "2조", "code": "B", "is_active": True},
-    {"id": 5, "company_id": 2, "name": "3조", "code": "C", "is_active": True},
-    {"id": 6, "company_id": 3, "name": "주간", "code": "DAY", "is_active": True},
-    {"id": 7, "company_id": 3, "name": "야간", "code": "NIGHT", "is_active": True},
-    {"id": 8, "company_id": 4, "name": "주간", "code": "DAY", "is_active": True},
-    {"id": 9, "company_id": 4, "name": "오후", "code": "PM", "is_active": True},
-    {"id": 10, "company_id": 4, "name": "야간", "code": "NIGHT", "is_active": True},
-    {"id": 11, "company_id": 5, "name": "1조", "code": "A", "is_active": True},
-    {"id": 12, "company_id": 5, "name": "2조", "code": "B", "is_active": True},
-    {"id": 13, "company_id": 6, "name": "주간", "code": "DAY", "is_active": True},
-    {"id": 14, "company_id": 6, "name": "야간", "code": "NIGHT", "is_active": True},
-    {"id": 15, "company_id": 7, "name": "A조", "code": "A", "is_active": True},
-    {"id": 16, "company_id": 7, "name": "B조", "code": "B", "is_active": True},
-    {"id": 17, "company_id": 7, "name": "C조", "code": "C", "is_active": True},
-]
-
-company_payroll_settings: list[dict[str, Any]] = [
-    {
-        "company_id": 1,
-        "default_pay_type": "monthly",
-        "base_salary": 2200000,
-        "daily_wage": 100000,
-        "hourly_wage": 10000,
-        "night_allowance_rate": 1.5,
-        "overtime_allowance_rate": 1.5,
-        "hospital_pay_type": "paid",
-        "absence_deduction_amount": 80000,
-        "meal_allowance": 150000,
-        "transport_allowance": 100000,
-        "position_allowance": 50000,
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-    {
-        "company_id": 2,
-        "default_pay_type": "daily",
-        "base_salary": 0,
-        "daily_wage": 110000,
-        "hourly_wage": 10500,
-        "night_allowance_rate": 1.5,
-        "overtime_allowance_rate": 1.5,
-        "hospital_pay_type": "unpaid",
-        "absence_deduction_amount": 90000,
-        "meal_allowance": 120000,
-        "transport_allowance": 80000,
-        "position_allowance": 0,
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-    {
-        "company_id": 3,
-        "default_pay_type": "monthly",
-        "base_salary": 2300000,
-        "daily_wage": 105000,
-        "hourly_wage": 10200,
-        "night_allowance_rate": 1.5,
-        "overtime_allowance_rate": 1.5,
-        "hospital_pay_type": "paid",
-        "absence_deduction_amount": 85000,
-        "meal_allowance": 100000,
-        "transport_allowance": 80000,
-        "position_allowance": 30000,
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-    {
-        "company_id": 4,
-        "default_pay_type": "daily",
-        "base_salary": 0,
-        "daily_wage": 115000,
-        "hourly_wage": 10800,
-        "night_allowance_rate": 1.5,
-        "overtime_allowance_rate": 1.5,
-        "hospital_pay_type": "paid",
-        "absence_deduction_amount": 70000,
-        "meal_allowance": 90000,
-        "transport_allowance": 70000,
-        "position_allowance": 20000,
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-    {
-        "company_id": 5,
-        "default_pay_type": "daily",
-        "base_salary": 0,
-        "daily_wage": 120000,
-        "hourly_wage": 11000,
-        "night_allowance_rate": 1.5,
-        "overtime_allowance_rate": 1.5,
-        "hospital_pay_type": "unpaid",
-        "absence_deduction_amount": 95000,
-        "meal_allowance": 80000,
-        "transport_allowance": 90000,
-        "position_allowance": 0,
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-    {
-        "company_id": 6,
-        "default_pay_type": "hourly",
-        "base_salary": 0,
-        "daily_wage": 108000,
-        "hourly_wage": 10600,
-        "night_allowance_rate": 1.5,
-        "overtime_allowance_rate": 1.5,
-        "hospital_pay_type": "paid",
-        "absence_deduction_amount": 85000,
-        "meal_allowance": 70000,
-        "transport_allowance": 60000,
-        "position_allowance": 0,
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-    {
-        "company_id": 7,
-        "default_pay_type": "monthly",
-        "base_salary": 2400000,
-        "daily_wage": 115000,
-        "hourly_wage": 11200,
-        "night_allowance_rate": 1.5,
-        "overtime_allowance_rate": 1.5,
-        "hospital_pay_type": "unpaid",
-        "absence_deduction_amount": 90000,
-        "meal_allowance": 100000,
-        "transport_allowance": 70000,
-        "position_allowance": 40000,
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-]
-
-employees: list[dict[str, Any]] = [
-    {"id": 1, "company_id": 1, "name": "성조", "nationality": "한국", "phone": "010-1111-2222", "hire_date": "2026-03-01", "status": "active", "work_type_id": 1, "pay_type": "monthly", "created_at": today_str(), "updated_at": today_str()},
-    {"id": 2, "company_id": 1, "name": "응우옌", "nationality": "베트남", "phone": "010-3333-4444", "hire_date": "2026-03-15", "status": "active", "work_type_id": 2, "pay_type": "daily", "created_at": today_str(), "updated_at": today_str()},
-    {"id": 3, "company_id": 2, "name": "알리", "nationality": "우즈베키스탄", "phone": "010-5555-6666", "hire_date": "2026-03-20", "status": "active", "work_type_id": 3, "pay_type": "hourly", "created_at": today_str(), "updated_at": today_str()},
-    {"id": 4, "company_id": 1, "name": "김민수", "nationality": "한국", "phone": "010-7000-0004", "hire_date": "2026-02-10", "status": "active", "work_type_id": 1, "pay_type": "monthly", "created_at": today_str(), "updated_at": today_str()},
-    {"id": 5, "company_id": 1, "name": "소피아", "nationality": "필리핀", "phone": "010-7000-0005", "hire_date": "2026-02-14", "status": "active", "work_type_id": 2, "pay_type": "daily", "created_at": today_str(), "updated_at": today_str()},
-    {"id": 6, "company_id": 2, "name": "박준호", "nationality": "한국", "phone": "010-7000-0006", "hire_date": "2026-01-08", "status": "active", "work_type_id": 4, "pay_type": "daily", "created_at": today_str(), "updated_at": today_str()},
-    {"id": 7, "company_id": 2, "name": "도안", "nationality": "베트남", "phone": "010-7000-0007", "hire_date": "2026-01-21", "status": "active", "work_type_id": 5, "pay_type": "hourly", "created_at": today_str(), "updated_at": today_str()},
-    {"id": 8, "company_id": 3, "name": "이하늘", "nationality": "한국", "phone": "010-7000-0008", "hire_date": "2026-02-03", "status": "active", "work_type_id": 6, "pay_type": "monthly", "created_at": today_str(), "updated_at": today_str()},
-    {"id": 9, "company_id": 3, "name": "마리아", "nationality": "필리핀", "phone": "010-7000-0009", "hire_date": "2026-02-11", "status": "active", "work_type_id": 7, "pay_type": "daily", "created_at": today_str(), "updated_at": today_str()},
-    {"id": 10, "company_id": 4, "name": "정수빈", "nationality": "한국", "phone": "010-7000-0010", "hire_date": "2026-01-30", "status": "active", "work_type_id": 8, "pay_type": "daily", "created_at": today_str(), "updated_at": today_str()},
-    {"id": 11, "company_id": 4, "name": "칼로스", "nationality": "멕시코", "phone": "010-7000-0011", "hire_date": "2026-02-18", "status": "active", "work_type_id": 10, "pay_type": "hourly", "created_at": today_str(), "updated_at": today_str()},
-    {"id": 12, "company_id": 5, "name": "최현우", "nationality": "한국", "phone": "010-7000-0012", "hire_date": "2026-01-12", "status": "active", "work_type_id": 11, "pay_type": "daily", "created_at": today_str(), "updated_at": today_str()},
-    {"id": 13, "company_id": 5, "name": "압둘", "nationality": "우즈베키스탄", "phone": "010-7000-0013", "hire_date": "2026-02-20", "status": "active", "work_type_id": 12, "pay_type": "daily", "created_at": today_str(), "updated_at": today_str()},
-    {"id": 14, "company_id": 6, "name": "한유진", "nationality": "한국", "phone": "010-7000-0014", "hire_date": "2026-03-04", "status": "active", "work_type_id": 13, "pay_type": "hourly", "created_at": today_str(), "updated_at": today_str()},
-    {"id": 15, "company_id": 6, "name": "린", "nationality": "태국", "phone": "010-7000-0015", "hire_date": "2026-03-09", "status": "active", "work_type_id": 14, "pay_type": "hourly", "created_at": today_str(), "updated_at": today_str()},
-    {"id": 16, "company_id": 7, "name": "오세훈", "nationality": "한국", "phone": "010-7000-0016", "hire_date": "2026-02-01", "status": "active", "work_type_id": 15, "pay_type": "monthly", "created_at": today_str(), "updated_at": today_str()},
-    {"id": 17, "company_id": 7, "name": "제이슨", "nationality": "미국", "phone": "010-7000-0017", "hire_date": "2026-02-07", "status": "active", "work_type_id": 16, "pay_type": "hourly", "created_at": today_str(), "updated_at": today_str()},
-    {"id": 18, "company_id": 7, "name": "누르잔", "nationality": "카자흐스탄", "phone": "010-7000-0018", "hire_date": "2026-02-25", "status": "active", "work_type_id": 17, "pay_type": "daily", "created_at": today_str(), "updated_at": today_str()},
-]
-
-employee_documents: list[dict[str, Any]] = [
-    {"id": 1, "employee_id": 1, "document_type": "id_card", "file_name": "sungjo_idcard.pdf", "file_path": "/uploads/sungjo_idcard.pdf", "file_mime_type": "application/pdf", "is_sensitive": True, "uploaded_by": "super_admin", "created_at": today_str()},
-    {"id": 2, "employee_id": 2, "document_type": "passport", "file_name": "nguyen_passport.jpg", "file_path": "/uploads/nguyen_passport.jpg", "file_mime_type": "image/jpeg", "is_sensitive": True, "uploaded_by": "super_admin", "created_at": today_str()},
-    {"id": 3, "employee_id": 9, "document_type": "passport", "file_name": "maria_passport.pdf", "file_path": "/uploads/maria_passport.pdf", "file_mime_type": "application/pdf", "is_sensitive": True, "uploaded_by": "super_admin", "created_at": today_str()},
-]
-
-attendance_records: list[dict[str, Any]] = [
-    {"id": 1, "company_id": 1, "employee_id": 1, "work_date": today_str(), "work_type_id": 1, "status": "working", "check_in_at": "08:55:00", "check_out_at": "", "overtime_minutes": 0, "night_minutes": 0, "reason": "", "created_by": "admin", "updated_by": "admin", "created_at": today_str(), "updated_at": today_str()},
-    {"id": 2, "company_id": 1, "employee_id": 2, "work_date": today_str(), "work_type_id": 2, "status": "hospital", "check_in_at": "", "check_out_at": "", "overtime_minutes": 0, "night_minutes": 0, "reason": "병원 진료", "created_by": "admin", "updated_by": "admin", "created_at": today_str(), "updated_at": today_str()},
-    {"id": 3, "company_id": 2, "employee_id": 3, "work_date": today_str(), "work_type_id": 3, "status": "completed", "check_in_at": "07:50:00", "check_out_at": "18:10:00", "overtime_minutes": 70, "night_minutes": 0, "reason": "", "created_by": "admin", "updated_by": "admin", "created_at": today_str(), "updated_at": today_str()},
-    {"id": 4, "company_id": 1, "employee_id": 4, "work_date": today_str(), "work_type_id": 1, "status": "completed", "check_in_at": "08:47:00", "check_out_at": "18:03:00", "overtime_minutes": 30, "night_minutes": 0, "reason": "", "created_by": "admin", "updated_by": "admin", "created_at": today_str(), "updated_at": today_str()},
-    {"id": 5, "company_id": 1, "employee_id": 5, "work_date": today_str(), "work_type_id": 2, "status": "working", "check_in_at": "20:05:00", "check_out_at": "", "overtime_minutes": 0, "night_minutes": 180, "reason": "", "created_by": "admin", "updated_by": "admin", "created_at": today_str(), "updated_at": today_str()},
-    {"id": 6, "company_id": 2, "employee_id": 6, "work_date": today_str(), "work_type_id": 4, "status": "working", "check_in_at": "08:12:00", "check_out_at": "", "overtime_minutes": 0, "night_minutes": 0, "reason": "", "created_by": "admin", "updated_by": "admin", "created_at": today_str(), "updated_at": today_str()},
-    {"id": 7, "company_id": 2, "employee_id": 7, "work_date": today_str(), "work_type_id": 5, "status": "absent", "check_in_at": "", "check_out_at": "", "overtime_minutes": 0, "night_minutes": 0, "reason": "무단 결근", "created_by": "admin", "updated_by": "admin", "created_at": today_str(), "updated_at": today_str()},
-    {"id": 8, "company_id": 3, "employee_id": 8, "work_date": today_str(), "work_type_id": 6, "status": "working", "check_in_at": "08:58:00", "check_out_at": "", "overtime_minutes": 0, "night_minutes": 0, "reason": "", "created_by": "admin", "updated_by": "admin", "created_at": today_str(), "updated_at": today_str()},
-    {"id": 9, "company_id": 3, "employee_id": 9, "work_date": today_str(), "work_type_id": 7, "status": "vacation", "check_in_at": "", "check_out_at": "", "overtime_minutes": 0, "night_minutes": 0, "reason": "연차", "created_by": "admin", "updated_by": "admin", "created_at": today_str(), "updated_at": today_str()},
-    {"id": 10, "company_id": 4, "employee_id": 10, "work_date": today_str(), "work_type_id": 8, "status": "completed", "check_in_at": "08:32:00", "check_out_at": "17:58:00", "overtime_minutes": 0, "night_minutes": 0, "reason": "", "created_by": "admin", "updated_by": "admin", "created_at": today_str(), "updated_at": today_str()},
-    {"id": 11, "company_id": 4, "employee_id": 11, "work_date": today_str(), "work_type_id": 10, "status": "working", "check_in_at": "21:01:00", "check_out_at": "", "overtime_minutes": 0, "night_minutes": 240, "reason": "", "created_by": "admin", "updated_by": "admin", "created_at": today_str(), "updated_at": today_str()},
-    {"id": 12, "company_id": 5, "employee_id": 12, "work_date": today_str(), "work_type_id": 11, "status": "working", "check_in_at": "06:45:00", "check_out_at": "", "overtime_minutes": 0, "night_minutes": 0, "reason": "", "created_by": "admin", "updated_by": "admin", "created_at": today_str(), "updated_at": today_str()},
-    {"id": 13, "company_id": 5, "employee_id": 13, "work_date": today_str(), "work_type_id": 12, "status": "hospital", "check_in_at": "", "check_out_at": "", "overtime_minutes": 0, "night_minutes": 0, "reason": "진료 예약", "created_by": "admin", "updated_by": "admin", "created_at": today_str(), "updated_at": today_str()},
-    {"id": 14, "company_id": 6, "employee_id": 14, "work_date": today_str(), "work_type_id": 13, "status": "completed", "check_in_at": "07:28:00", "check_out_at": "18:12:00", "overtime_minutes": 42, "night_minutes": 0, "reason": "", "created_by": "admin", "updated_by": "admin", "created_at": today_str(), "updated_at": today_str()},
-    {"id": 15, "company_id": 6, "employee_id": 15, "work_date": today_str(), "work_type_id": 14, "status": "working", "check_in_at": "19:55:00", "check_out_at": "", "overtime_minutes": 0, "night_minutes": 210, "reason": "", "created_by": "admin", "updated_by": "admin", "created_at": today_str(), "updated_at": today_str()},
-    {"id": 16, "company_id": 7, "employee_id": 16, "work_date": today_str(), "work_type_id": 15, "status": "working", "check_in_at": "08:05:00", "check_out_at": "", "overtime_minutes": 0, "night_minutes": 0, "reason": "", "created_by": "admin", "updated_by": "admin", "created_at": today_str(), "updated_at": today_str()},
-    {"id": 17, "company_id": 7, "employee_id": 17, "work_date": today_str(), "work_type_id": 16, "status": "completed", "check_in_at": "08:10:00", "check_out_at": "18:20:00", "overtime_minutes": 50, "night_minutes": 0, "reason": "", "created_by": "admin", "updated_by": "admin", "created_at": today_str(), "updated_at": today_str()},
-    {"id": 18, "company_id": 7, "employee_id": 18, "work_date": today_str(), "work_type_id": 17, "status": "before_work", "check_in_at": "", "check_out_at": "", "overtime_minutes": 0, "night_minutes": 0, "reason": "", "created_by": "admin", "updated_by": "admin", "created_at": today_str(), "updated_at": today_str()},
-]
-
-payroll_runs: list[dict[str, Any]] = []
-payroll_items: list[dict[str, Any]] = []
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(120), nullable=False)
+    ceo_name = db.Column(db.String(120), nullable=False, default="")
+    business_number = db.Column(db.String(30), nullable=False, unique=True)
+    phone = db.Column(db.String(30), nullable=False, default="")
+    address = db.Column(db.String(255), nullable=False, default="")
+    business_type = db.Column(db.String(120), nullable=False, default="")
+    business_item = db.Column(db.String(120), nullable=False, default="")
+    email = db.Column(db.String(120), nullable=False, default="")
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+    memo = db.Column(db.Text, nullable=False, default="")
+    created_at = db.Column(db.String(10), nullable=False, default=today_str)
+    updated_at = db.Column(db.String(10), nullable=False, default=today_str)
 
 
-def next_id(items: list[dict[str, Any]]) -> int:
-    return max((item["id"] for item in items), default=0) + 1
+class ClientCompany(db.Model):
+    __tablename__ = "client_companies"
+
+    id = db.Column(db.Integer, primary_key=True)
+    our_business_id = db.Column(db.Integer, db.ForeignKey("our_businesses.id"), nullable=False)
+    name = db.Column(db.String(120), nullable=False)
+    ceo_name = db.Column(db.String(120), nullable=False, default="")
+    business_number = db.Column(db.String(30), nullable=False, unique=True)
+    phone = db.Column(db.String(30), nullable=False, default="")
+    address = db.Column(db.String(255), nullable=False, default="")
+    business_type = db.Column(db.String(120), nullable=False, default="")
+    business_item = db.Column(db.String(120), nullable=False, default="")
+    email = db.Column(db.String(120), nullable=False, default="")
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+    memo = db.Column(db.Text, nullable=False, default="")
+    created_at = db.Column(db.String(10), nullable=False, default=today_str)
+    updated_at = db.Column(db.String(10), nullable=False, default=today_str)
 
 
-def get_company(company_id: int) -> dict[str, Any] | None:
-    return next((c for c in companies if c["id"] == company_id), None)
+class ClientCompanySetting(db.Model):
+    __tablename__ = "client_company_settings"
+
+    id = db.Column(db.Integer, primary_key=True)
+    client_company_id = db.Column(db.Integer, db.ForeignKey("client_companies.id"), nullable=False, unique=True)
+    attendance_open_time = db.Column(db.String(5), nullable=False, default="08:00")
+    late_standard_time = db.Column(db.String(5), nullable=False, default="09:00")
+    workday_standard_hours = db.Column(db.Integer, nullable=False, default=8)
+    hospital_paid = db.Column(db.Boolean, nullable=False, default=True)
+    document_view_policy = db.Column(db.String(100), nullable=False, default="sensitive_super_admin_only")
+    created_at = db.Column(db.String(10), nullable=False, default=today_str)
+    updated_at = db.Column(db.String(10), nullable=False, default=today_str)
 
 
-def get_company_name(company_id: int | None) -> str:
-    if company_id is None:
+class ClientCompanyWorkType(db.Model):
+    __tablename__ = "client_company_work_types"
+
+    id = db.Column(db.Integer, primary_key=True)
+    client_company_id = db.Column(db.Integer, db.ForeignKey("client_companies.id"), nullable=False)
+    name = db.Column(db.String(120), nullable=False)
+    code = db.Column(db.String(30), nullable=False, default="")
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+
+
+class ClientCompanyPayrollSetting(db.Model):
+    __tablename__ = "client_company_payroll_settings"
+
+    id = db.Column(db.Integer, primary_key=True)
+    client_company_id = db.Column(db.Integer, db.ForeignKey("client_companies.id"), nullable=False, unique=True)
+    default_pay_type = db.Column(db.String(20), nullable=False, default="monthly")
+    base_salary = db.Column(db.Integer, nullable=False, default=0)
+    daily_wage = db.Column(db.Integer, nullable=False, default=0)
+    hourly_wage = db.Column(db.Integer, nullable=False, default=0)
+    night_allowance_rate = db.Column(db.Float, nullable=False, default=1.5)
+    overtime_allowance_rate = db.Column(db.Float, nullable=False, default=1.5)
+    hospital_pay_type = db.Column(db.String(20), nullable=False, default="paid")
+    absence_deduction_amount = db.Column(db.Integer, nullable=False, default=0)
+    meal_allowance = db.Column(db.Integer, nullable=False, default=0)
+    transport_allowance = db.Column(db.Integer, nullable=False, default=0)
+    position_allowance = db.Column(db.Integer, nullable=False, default=0)
+    created_at = db.Column(db.String(10), nullable=False, default=today_str)
+    updated_at = db.Column(db.String(10), nullable=False, default=today_str)
+
+
+class Employee(db.Model):
+    __tablename__ = "employees"
+
+    id = db.Column(db.Integer, primary_key=True)
+    our_business_id = db.Column(db.Integer, db.ForeignKey("our_businesses.id"), nullable=False)
+    current_client_company_id = db.Column(db.Integer, db.ForeignKey("client_companies.id"), nullable=True)
+    name = db.Column(db.String(120), nullable=False)
+    nationality = db.Column(db.String(80), nullable=False, default="")
+    phone = db.Column(db.String(30), nullable=False, default="")
+    hire_date = db.Column(db.String(10), nullable=False, default=today_str)
+    status = db.Column(db.String(20), nullable=False, default="active")
+    work_type_id = db.Column(db.Integer, db.ForeignKey("client_company_work_types.id"), nullable=True)
+    pay_type = db.Column(db.String(20), nullable=False, default="monthly")
+    created_at = db.Column(db.String(10), nullable=False, default=today_str)
+    updated_at = db.Column(db.String(10), nullable=False, default=today_str)
+
+
+class EmployeeDocument(db.Model):
+    __tablename__ = "employee_documents"
+
+    id = db.Column(db.Integer, primary_key=True)
+    employee_id = db.Column(db.Integer, db.ForeignKey("employees.id"), nullable=False)
+    document_type = db.Column(db.String(30), nullable=False, default="other")
+    file_name = db.Column(db.String(255), nullable=False, default="")
+    file_path = db.Column(db.String(255), nullable=False, default="")
+    file_mime_type = db.Column(db.String(100), nullable=False, default="application/pdf")
+    is_sensitive = db.Column(db.Boolean, nullable=False, default=True)
+    uploaded_by = db.Column(db.String(50), nullable=False, default="super_admin")
+    created_at = db.Column(db.String(10), nullable=False, default=today_str)
+
+
+class AttendanceRecord(db.Model):
+    __tablename__ = "attendance_records"
+    __table_args__ = (
+        UniqueConstraint("employee_id", "work_date", name="uq_attendance_employee_work_date"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    our_business_id = db.Column(db.Integer, db.ForeignKey("our_businesses.id"), nullable=False)
+    client_company_id = db.Column(db.Integer, db.ForeignKey("client_companies.id"), nullable=False)
+    employee_id = db.Column(db.Integer, db.ForeignKey("employees.id"), nullable=False)
+    work_date = db.Column(db.String(10), nullable=False)
+    work_type_id = db.Column(db.Integer, db.ForeignKey("client_company_work_types.id"), nullable=True)
+    status = db.Column(db.String(20), nullable=False, default="before_work")
+    check_in_at = db.Column(db.String(8), nullable=False, default="")
+    check_out_at = db.Column(db.String(8), nullable=False, default="")
+    overtime_minutes = db.Column(db.Integer, nullable=False, default=0)
+    night_minutes = db.Column(db.Integer, nullable=False, default=0)
+    reason = db.Column(db.String(255), nullable=False, default="")
+    created_by = db.Column(db.String(50), nullable=False, default="admin")
+    updated_by = db.Column(db.String(50), nullable=False, default="admin")
+    created_at = db.Column(db.String(10), nullable=False, default=today_str)
+    updated_at = db.Column(db.String(10), nullable=False, default=today_str)
+
+
+class PayrollRun(db.Model):
+    __tablename__ = "payroll_runs"
+
+    id = db.Column(db.Integer, primary_key=True)
+    our_business_id = db.Column(db.Integer, db.ForeignKey("our_businesses.id"), nullable=False)
+    client_company_id = db.Column(db.Integer, db.ForeignKey("client_companies.id"), nullable=False)
+    target_year = db.Column(db.Integer, nullable=False)
+    target_month = db.Column(db.Integer, nullable=False)
+    status = db.Column(db.String(20), nullable=False, default="calculated")
+    calculated_by = db.Column(db.String(50), nullable=False, default="admin")
+    calculated_at = db.Column(db.String(19), nullable=False, default=lambda: datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    created_at = db.Column(db.String(10), nullable=False, default=today_str)
+
+
+class PayrollItem(db.Model):
+    __tablename__ = "payroll_items"
+
+    id = db.Column(db.Integer, primary_key=True)
+    payroll_run_id = db.Column(db.Integer, db.ForeignKey("payroll_runs.id"), nullable=False)
+    employee_id = db.Column(db.Integer, db.ForeignKey("employees.id"), nullable=False)
+    work_days = db.Column(db.Integer, nullable=False, default=0)
+    hospital_days = db.Column(db.Integer, nullable=False, default=0)
+    vacation_days = db.Column(db.Integer, nullable=False, default=0)
+    absent_days = db.Column(db.Integer, nullable=False, default=0)
+    night_minutes = db.Column(db.Integer, nullable=False, default=0)
+    overtime_minutes = db.Column(db.Integer, nullable=False, default=0)
+    base_amount = db.Column(db.Integer, nullable=False, default=0)
+    allowance_amount = db.Column(db.Integer, nullable=False, default=0)
+    deduction_amount = db.Column(db.Integer, nullable=False, default=0)
+    final_amount = db.Column(db.Integer, nullable=False, default=0)
+    created_at = db.Column(db.String(10), nullable=False, default=today_str)
+    updated_at = db.Column(db.String(10), nullable=False, default=today_str)
+
+
+def get_our_business(our_business_id: int) -> OurBusiness | None:
+    return db.session.get(OurBusiness, our_business_id)
+
+
+def get_our_business_name(our_business_id: int | None) -> str:
+    if our_business_id is None:
         return "-"
-    company = get_company(company_id)
-    return company["name"] if company else "-"
+    item = db.session.get(OurBusiness, our_business_id)
+    return item.name if item else "-"
 
 
-def get_company_setting(company_id: int) -> dict[str, Any] | None:
-    return next((s for s in company_settings if s["company_id"] == company_id), None)
+def get_client_company(client_company_id: int) -> ClientCompany | None:
+    return db.session.get(ClientCompany, client_company_id)
 
 
-def get_company_payroll_setting(company_id: int) -> dict[str, Any] | None:
-    return next((s for s in company_payroll_settings if s["company_id"] == company_id), None)
+def get_client_company_name(client_company_id: int | None) -> str:
+    if client_company_id is None:
+        return "-"
+    item = db.session.get(ClientCompany, client_company_id)
+    return item.name if item else "-"
 
 
-def get_employee(employee_id: int) -> dict[str, Any] | None:
-    return next((e for e in employees if e["id"] == employee_id), None)
+def get_client_company_setting(client_company_id: int) -> ClientCompanySetting | None:
+    return ClientCompanySetting.query.filter_by(client_company_id=client_company_id).first()
 
 
-def get_work_type(work_type_id: int | None) -> dict[str, Any] | None:
+def get_client_company_payroll_setting(client_company_id: int) -> ClientCompanyPayrollSetting | None:
+    return ClientCompanyPayrollSetting.query.filter_by(client_company_id=client_company_id).first()
+
+
+def get_client_company_work_types(client_company_id: int) -> list[ClientCompanyWorkType]:
+    return (
+        ClientCompanyWorkType.query
+        .filter_by(client_company_id=client_company_id, is_active=True)
+        .order_by(ClientCompanyWorkType.id.asc())
+        .all()
+    )
+
+
+def get_employee(employee_id: int) -> Employee | None:
+    return db.session.get(Employee, employee_id)
+
+
+def get_work_type(work_type_id: int | None) -> ClientCompanyWorkType | None:
     if work_type_id is None:
         return None
-    return next((w for w in company_work_types if w["id"] == work_type_id), None)
+    return db.session.get(ClientCompanyWorkType, work_type_id)
 
 
 def get_work_type_name(work_type_id: int | None) -> str:
     work_type = get_work_type(work_type_id)
-    return work_type["name"] if work_type else "-"
+    return work_type.name if work_type else "-"
 
 
-def get_company_work_types(company_id: int) -> list[dict[str, Any]]:
-    return [
-        w
-        for w in company_work_types
-        if w["company_id"] == company_id and w["is_active"]
-    ]
+def get_employee_documents(employee_id: int) -> list[EmployeeDocument]:
+    return EmployeeDocument.query.filter_by(employee_id=employee_id).order_by(EmployeeDocument.id.desc()).all()
 
 
-def get_employee_documents(employee_id: int) -> list[dict[str, Any]]:
-    return [d for d in employee_documents if d["employee_id"] == employee_id]
-
-
-def get_attendance_record(employee_id: int, work_date: str) -> dict[str, Any] | None:
-    return next(
-        (
-            r
-            for r in attendance_records
-            if r["employee_id"] == employee_id and r["work_date"] == work_date
-        ),
-        None,
-    )
+def get_attendance_record(employee_id: int, work_date: str) -> AttendanceRecord | None:
+    return AttendanceRecord.query.filter_by(employee_id=employee_id, work_date=work_date).first()
 
 
 def get_today_status(employee_id: int) -> str:
     record = get_attendance_record(employee_id, today_str())
-    return record["status"] if record else "before_work"
+    return record.status if record else "before_work"
 
 
 def get_display_status(employee_id: int, work_date: str) -> str:
     record = get_attendance_record(employee_id, work_date)
-    return record["status"] if record else "before_work"
+    return record.status if record else "before_work"
 
 
-def get_employees_by_company(company_id: int | None) -> list[dict[str, Any]]:
-    if company_id is None:
-        return list(employees)
-    return [e for e in employees if e["company_id"] == company_id]
+def get_employees_by_our_business(our_business_id: int | None) -> list[Employee]:
+    query = Employee.query
+    if our_business_id is not None:
+        query = query.filter_by(our_business_id=our_business_id)
+    return query.order_by(Employee.id.asc()).all()
 
 
-def count_status_for_company(company_id: int | None, work_date: str, status: str) -> int:
+def get_employees_by_client_company(client_company_id: int | None) -> list[Employee]:
+    query = Employee.query
+    if client_company_id is not None:
+        query = query.filter_by(current_client_company_id=client_company_id)
+    return query.order_by(Employee.id.asc()).all()
+
+
+def count_status_for_client_company(client_company_id: int | None, work_date: str, status: str) -> int:
     return sum(
         1
-        for employee in get_employees_by_company(company_id)
-        if get_display_status(employee["id"], work_date) == status
+        for employee in get_employees_by_client_company(client_company_id)
+        if get_display_status(employee.id, work_date) == status
     )
 
 
@@ -522,29 +350,30 @@ def format_won(value: float | int) -> str:
     return f"{int(round(value)):,}"
 
 
-def ensure_attendance_record(employee: dict[str, Any], work_date: str) -> dict[str, Any]:
-    record = get_attendance_record(employee["id"], work_date)
+def ensure_attendance_record(employee: Employee, work_date: str) -> AttendanceRecord:
+    record = get_attendance_record(employee.id, work_date)
     if record:
         return record
 
-    record = {
-        "id": next_id(attendance_records),
-        "company_id": employee["company_id"],
-        "employee_id": employee["id"],
-        "work_date": work_date,
-        "work_type_id": employee["work_type_id"],
-        "status": "before_work",
-        "check_in_at": "",
-        "check_out_at": "",
-        "overtime_minutes": 0,
-        "night_minutes": 0,
-        "reason": "",
-        "created_by": "admin",
-        "updated_by": "admin",
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    }
-    attendance_records.append(record)
+    record = AttendanceRecord(
+        our_business_id=employee.our_business_id,
+        client_company_id=employee.current_client_company_id or 0,
+        employee_id=employee.id,
+        work_date=work_date,
+        work_type_id=employee.work_type_id,
+        status="before_work",
+        check_in_at="",
+        check_out_at="",
+        overtime_minutes=0,
+        night_minutes=0,
+        reason="",
+        created_by="admin",
+        updated_by="admin",
+        created_at=today_str(),
+        updated_at=today_str(),
+    )
+    db.session.add(record)
+    db.session.commit()
     return record
 
 
@@ -557,88 +386,81 @@ def update_attendance(
     night_minutes: int = 0,
 ) -> None:
     employee = get_employee(employee_id)
-    if not employee:
+    if not employee or not employee.current_client_company_id:
         return
 
     record = ensure_attendance_record(employee, work_date)
     now_time = now_time_str()
 
+    record.our_business_id = employee.our_business_id
+    record.client_company_id = employee.current_client_company_id
+    record.work_type_id = employee.work_type_id
+
     if action_type == "checkin":
-        record["status"] = "working"
-        record["check_in_at"] = record["check_in_at"] or now_time
-        record["reason"] = ""
+        record.status = "working"
+        record.check_in_at = record.check_in_at or now_time
+        record.reason = ""
     elif action_type == "checkout":
-        if not record["check_in_at"]:
-            record["check_in_at"] = now_time
-        record["status"] = "completed"
-        record["check_out_at"] = now_time
+        if not record.check_in_at:
+            record.check_in_at = now_time
+        record.status = "completed"
+        record.check_out_at = now_time
     elif action_type == "hospital":
-        record["status"] = "hospital"
-        record["check_in_at"] = ""
-        record["check_out_at"] = ""
-        record["reason"] = reason or "병원 진료"
+        record.status = "hospital"
+        record.check_in_at = ""
+        record.check_out_at = ""
+        record.reason = reason or "병원 진료"
     elif action_type == "vacation":
-        record["status"] = "vacation"
-        record["check_in_at"] = ""
-        record["check_out_at"] = ""
-        record["reason"] = reason or "휴가"
+        record.status = "vacation"
+        record.check_in_at = ""
+        record.check_out_at = ""
+        record.reason = reason or "휴가"
     elif action_type == "absent":
-        record["status"] = "absent"
-        record["check_in_at"] = ""
-        record["check_out_at"] = ""
-        record["reason"] = reason or "결근"
+        record.status = "absent"
+        record.check_in_at = ""
+        record.check_out_at = ""
+        record.reason = reason or "결근"
     elif action_type == "reset":
-        record["status"] = "before_work"
-        record["check_in_at"] = ""
-        record["check_out_at"] = ""
-        record["reason"] = ""
+        record.status = "before_work"
+        record.check_in_at = ""
+        record.check_out_at = ""
+        record.reason = ""
 
-    record["overtime_minutes"] = max(0, overtime_minutes)
-    record["night_minutes"] = max(0, night_minutes)
-    record["updated_by"] = "admin"
-    record["updated_at"] = today_str()
+    record.overtime_minutes = max(0, overtime_minutes)
+    record.night_minutes = max(0, night_minutes)
+    record.updated_by = "admin"
+    record.updated_at = today_str()
+    db.session.commit()
 
 
-def get_month_attendance_map(
-    employee_id: int,
-    year: int,
-    month: int,
-) -> dict[int, dict[str, Any]]:
-    result: dict[int, dict[str, Any]] = {}
-    for record in attendance_records:
-        if record["employee_id"] != employee_id:
-            continue
-        dt = parse_date(record["work_date"])
+def get_month_attendance_map(employee_id: int, year: int, month: int) -> dict[int, AttendanceRecord]:
+    result: dict[int, AttendanceRecord] = {}
+    records = AttendanceRecord.query.filter_by(employee_id=employee_id).all()
+    for record in records:
+        dt = parse_date(record.work_date)
         if dt.year == year and dt.month == month:
             result[dt.day] = record
     return result
 
 
-def get_day_mark(record: dict[str, Any] | None) -> str:
+def get_day_mark(record: AttendanceRecord | None) -> str:
     if not record:
         return ""
-    if record["status"] in {"working", "completed"}:
+    if record.status in {"working", "completed"}:
         return "O"
-    if record["status"] == "hospital":
+    if record.status == "hospital":
         return "H"
-    if record["status"] == "absent":
+    if record.status == "absent":
         return "X"
-    if record["status"] == "vacation":
+    if record.status == "vacation":
         return "V"
     return ""
 
 
-def calculate_payroll_for_employee(
-    employee: dict[str, Any],
-    year: int,
-    month: int,
-) -> dict[str, Any]:
-    payroll_setting = get_company_payroll_setting(employee["company_id"])
-    company_setting = get_company_setting(employee["company_id"])
-
-    if not payroll_setting or not company_setting:
+def calculate_payroll_for_employee(employee: Employee, year: int, month: int) -> dict[str, Any]:
+    if not employee.current_client_company_id:
         return {
-            "employee_id": employee["id"],
+            "employee_id": employee.id,
             "work_days": 0,
             "hospital_days": 0,
             "absent_days": 0,
@@ -651,62 +473,64 @@ def calculate_payroll_for_employee(
             "final_amount": 0,
         }
 
-    records = []
-    for record in attendance_records:
-        if record["employee_id"] != employee["id"]:
-            continue
-        dt = parse_date(record["work_date"])
-        if dt.year == year and dt.month == month:
-            records.append(record)
+    payroll_setting = get_client_company_payroll_setting(employee.current_client_company_id)
+    company_setting = get_client_company_setting(employee.current_client_company_id)
 
-    work_days = sum(1 for r in records if r["status"] in {"working", "completed"})
-    hospital_days = sum(1 for r in records if r["status"] == "hospital")
-    absent_days = sum(1 for r in records if r["status"] == "absent")
-    vacation_days = sum(1 for r in records if r["status"] == "vacation")
-    night_minutes = sum(r["night_minutes"] for r in records)
-    overtime_minutes = sum(r["overtime_minutes"] for r in records)
+    if not payroll_setting or not company_setting:
+        return {
+            "employee_id": employee.id,
+            "work_days": 0,
+            "hospital_days": 0,
+            "absent_days": 0,
+            "vacation_days": 0,
+            "night_minutes": 0,
+            "overtime_minutes": 0,
+            "base_amount": 0,
+            "allowance_amount": 0,
+            "deduction_amount": 0,
+            "final_amount": 0,
+        }
 
-    pay_type = employee.get("pay_type") or payroll_setting["default_pay_type"]
+    records = AttendanceRecord.query.filter_by(employee_id=employee.id).all()
+    records = [r for r in records if parse_date(r.work_date).year == year and parse_date(r.work_date).month == month]
+
+    work_days = sum(1 for r in records if r.status in {"working", "completed"})
+    hospital_days = sum(1 for r in records if r.status == "hospital")
+    absent_days = sum(1 for r in records if r.status == "absent")
+    vacation_days = sum(1 for r in records if r.status == "vacation")
+    night_minutes = sum(r.night_minutes for r in records)
+    overtime_minutes = sum(r.overtime_minutes for r in records)
+
+    pay_type = employee.pay_type or payroll_setting.default_pay_type
 
     if pay_type == "monthly":
-        base_amount = payroll_setting["base_salary"]
+        base_amount = payroll_setting.base_salary
     elif pay_type == "daily":
-        base_amount = work_days * payroll_setting["daily_wage"]
-        if payroll_setting["hospital_pay_type"] == "paid":
-            base_amount += hospital_days * payroll_setting["daily_wage"]
+        base_amount = work_days * payroll_setting.daily_wage
+        if payroll_setting.hospital_pay_type == "paid":
+            base_amount += hospital_days * payroll_setting.daily_wage
     else:
-        standard_hours = company_setting["workday_standard_hours"]
+        standard_hours = company_setting.workday_standard_hours
         worked_hours = work_days * standard_hours
-        if payroll_setting["hospital_pay_type"] == "paid":
+        if payroll_setting.hospital_pay_type == "paid":
             worked_hours += hospital_days * standard_hours
-        base_amount = worked_hours * payroll_setting["hourly_wage"]
+        base_amount = worked_hours * payroll_setting.hourly_wage
 
-    night_hour_amount = (
-        night_minutes / 60.0
-    ) * payroll_setting["hourly_wage"] * max(
-        0.0,
-        payroll_setting["night_allowance_rate"] - 1.0,
-    )
-    overtime_hour_amount = (
-        overtime_minutes / 60.0
-    ) * payroll_setting["hourly_wage"] * max(
-        0.0,
-        payroll_setting["overtime_allowance_rate"] - 1.0,
-    )
+    night_hour_amount = (night_minutes / 60.0) * payroll_setting.hourly_wage * max(0.0, payroll_setting.night_allowance_rate - 1.0)
+    overtime_hour_amount = (overtime_minutes / 60.0) * payroll_setting.hourly_wage * max(0.0, payroll_setting.overtime_allowance_rate - 1.0)
 
     allowance_amount = (
-        payroll_setting["meal_allowance"]
-        + payroll_setting["transport_allowance"]
-        + payroll_setting["position_allowance"]
+        payroll_setting.meal_allowance
+        + payroll_setting.transport_allowance
+        + payroll_setting.position_allowance
         + night_hour_amount
         + overtime_hour_amount
     )
-
-    deduction_amount = absent_days * payroll_setting["absence_deduction_amount"]
+    deduction_amount = absent_days * payroll_setting.absence_deduction_amount
     final_amount = base_amount + allowance_amount - deduction_amount
 
     return {
-        "employee_id": employee["id"],
+        "employee_id": employee.id,
         "work_days": work_days,
         "hospital_days": hospital_days,
         "absent_days": absent_days,
@@ -718,6 +542,155 @@ def calculate_payroll_for_employee(
         "deduction_amount": int(round(deduction_amount)),
         "final_amount": int(round(final_amount)),
     }
+
+
+def seed_database() -> None:
+    if OurBusiness.query.first():
+        return
+
+    our1 = OurBusiness(
+        name="에이스인력",
+        ceo_name="김대표",
+        business_number="111-11-11111",
+        phone="02-1111-1111",
+        address="서울특별시 구로구 예시로 1",
+        business_type="서비스업",
+        business_item="인력공급",
+        email="ace@example.com",
+        is_active=True,
+        memo="우리측 사업자",
+    )
+    our2 = OurBusiness(
+        name="미래서비스",
+        ceo_name="박대표",
+        business_number="222-22-22222",
+        phone="031-222-2222",
+        address="경기도 수원시 예시로 22",
+        business_type="서비스업",
+        business_item="파견관리",
+        email="mirae@example.com",
+        is_active=True,
+        memo="",
+    )
+    db.session.add_all([our1, our2])
+    db.session.commit()
+
+    clients = [
+        ClientCompany(
+            our_business_id=our1.id,
+            name="그린시스템",
+            ceo_name="홍길동",
+            business_number="123-45-67890",
+            phone="02-1234-5678",
+            address="경북 경주시 예시로 101",
+            business_type="제조업",
+            business_item="전자조립",
+            email="green@example.com",
+            is_active=True,
+            memo="주간/야간 운영",
+        ),
+        ClientCompany(
+            our_business_id=our1.id,
+            name="블루팩토리",
+            ceo_name="김공장",
+            business_number="234-56-78901",
+            phone="051-222-8899",
+            address="부산광역시 예시구 산업로 22",
+            business_type="제조업",
+            business_item="부품생산",
+            email="blue@example.com",
+            is_active=True,
+            memo="",
+        ),
+        ClientCompany(
+            our_business_id=our2.id,
+            name="스타물류",
+            ceo_name="박성호",
+            business_number="345-67-89012",
+            phone="031-555-1111",
+            address="경기도 화성시 물류로 77",
+            business_type="운수업",
+            business_item="물류센터",
+            email="star@example.com",
+            is_active=True,
+            memo="야간 운영",
+        ),
+    ]
+    db.session.add_all(clients)
+    db.session.commit()
+
+    for client in clients:
+        db.session.add(
+            ClientCompanySetting(
+                client_company_id=client.id,
+                attendance_open_time="08:00",
+                late_standard_time="09:00",
+                workday_standard_hours=8,
+                hospital_paid=True,
+                document_view_policy="sensitive_super_admin_only",
+            )
+        )
+        db.session.add(
+            ClientCompanyPayrollSetting(
+                client_company_id=client.id,
+                default_pay_type="monthly",
+                base_salary=2200000,
+                daily_wage=100000,
+                hourly_wage=10000,
+                night_allowance_rate=1.5,
+                overtime_allowance_rate=1.5,
+                hospital_pay_type="paid",
+                absence_deduction_amount=80000,
+                meal_allowance=100000,
+                transport_allowance=70000,
+                position_allowance=30000,
+            )
+        )
+    db.session.commit()
+
+    work_types = [
+        ClientCompanyWorkType(client_company_id=clients[0].id, name="주간", code="DAY", is_active=True),
+        ClientCompanyWorkType(client_company_id=clients[0].id, name="야간", code="NIGHT", is_active=True),
+        ClientCompanyWorkType(client_company_id=clients[1].id, name="1조", code="A", is_active=True),
+        ClientCompanyWorkType(client_company_id=clients[1].id, name="2조", code="B", is_active=True),
+        ClientCompanyWorkType(client_company_id=clients[2].id, name="주간", code="DAY", is_active=True),
+        ClientCompanyWorkType(client_company_id=clients[2].id, name="야간", code="NIGHT", is_active=True),
+    ]
+    db.session.add_all(work_types)
+    db.session.commit()
+
+    wt_green_day = next(w for w in work_types if w.client_company_id == clients[0].id and w.name == "주간")
+    wt_green_night = next(w for w in work_types if w.client_company_id == clients[0].id and w.name == "야간")
+    wt_blue_a = next(w for w in work_types if w.client_company_id == clients[1].id and w.name == "1조")
+    wt_blue_b = next(w for w in work_types if w.client_company_id == clients[1].id and w.name == "2조")
+    wt_star_day = next(w for w in work_types if w.client_company_id == clients[2].id and w.name == "주간")
+    wt_star_night = next(w for w in work_types if w.client_company_id == clients[2].id and w.name == "야간")
+
+    employees = [
+        Employee(our_business_id=our1.id, current_client_company_id=clients[0].id, name="성조", nationality="한국", phone="010-1111-2222", hire_date="2026-03-01", status="active", work_type_id=wt_green_day.id, pay_type="monthly"),
+        Employee(our_business_id=our1.id, current_client_company_id=clients[0].id, name="응우옌", nationality="베트남", phone="010-3333-4444", hire_date="2026-03-15", status="active", work_type_id=wt_green_night.id, pay_type="daily"),
+        Employee(our_business_id=our1.id, current_client_company_id=clients[1].id, name="알리", nationality="우즈베키스탄", phone="010-5555-6666", hire_date="2026-03-20", status="active", work_type_id=wt_blue_a.id, pay_type="hourly"),
+        Employee(our_business_id=our1.id, current_client_company_id=clients[1].id, name="김민수", nationality="한국", phone="010-7000-0004", hire_date="2026-02-10", status="active", work_type_id=wt_blue_b.id, pay_type="monthly"),
+        Employee(our_business_id=our2.id, current_client_company_id=clients[2].id, name="마리아", nationality="필리핀", phone="010-7000-0009", hire_date="2026-02-11", status="active", work_type_id=wt_star_night.id, pay_type="daily"),
+        Employee(our_business_id=our2.id, current_client_company_id=clients[2].id, name="한유진", nationality="한국", phone="010-7000-0014", hire_date="2026-03-04", status="active", work_type_id=wt_star_day.id, pay_type="hourly"),
+    ]
+    db.session.add_all(employees)
+    db.session.commit()
+
+    docs = [
+        EmployeeDocument(employee_id=employees[0].id, document_type="id_card", file_name="sungjo_idcard.pdf", file_path="/uploads/sungjo_idcard.pdf", file_mime_type="application/pdf", is_sensitive=True, uploaded_by="super_admin"),
+        EmployeeDocument(employee_id=employees[1].id, document_type="passport", file_name="nguyen_passport.jpg", file_path="/uploads/nguyen_passport.jpg", file_mime_type="image/jpeg", is_sensitive=True, uploaded_by="super_admin"),
+    ]
+    db.session.add_all(docs)
+    db.session.commit()
+
+    records = [
+        AttendanceRecord(our_business_id=employees[0].our_business_id, client_company_id=employees[0].current_client_company_id, employee_id=employees[0].id, work_date=today_str(), work_type_id=employees[0].work_type_id, status="working", check_in_at="08:55:00", check_out_at="", overtime_minutes=0, night_minutes=0, reason="", created_by="admin", updated_by="admin"),
+        AttendanceRecord(our_business_id=employees[1].our_business_id, client_company_id=employees[1].current_client_company_id, employee_id=employees[1].id, work_date=today_str(), work_type_id=employees[1].work_type_id, status="hospital", check_in_at="", check_out_at="", overtime_minutes=0, night_minutes=0, reason="병원 진료", created_by="admin", updated_by="admin"),
+        AttendanceRecord(our_business_id=employees[2].our_business_id, client_company_id=employees[2].current_client_company_id, employee_id=employees[2].id, work_date=today_str(), work_type_id=employees[2].work_type_id, status="completed", check_in_at="07:50:00", check_out_at="18:10:00", overtime_minutes=70, night_minutes=0, reason="", created_by="admin", updated_by="admin"),
+    ]
+    db.session.add_all(records)
+    db.session.commit()
 
 
 BASE_HTML = """
@@ -994,12 +967,13 @@ BASE_HTML = """
 </style>
 </head>
 <body>
-    <div class="topbar">멀티회사 사원관리 · 출퇴근 · 급여관리 시스템</div>
+    <div class="topbar">멀티사업자 파견관리 · 출퇴근 · 급여관리 시스템</div>
 
     <div class="menu">
         <a href="/" class="{{ 'active' if active=='home' else '' }}">메인</a>
-        <a href="/companies" class="{{ 'active' if active=='companies' else '' }}">회사관리</a>
-        <a href="/employees" class="{{ 'active' if active=='employees' else '' }}">사원관리</a>
+        <a href="/our-businesses" class="{{ 'active' if active=='our_businesses' else '' }}">우리사업자관리</a>
+        <a href="/client-companies" class="{{ 'active' if active=='client_companies' else '' }}">거래처관리</a>
+        <a href="/employees" class="{{ 'active' if active=='employees' else '' }}">인력관리</a>
         <a href="/attendance" class="{{ 'active' if active=='attendance' else '' }}">출퇴근관리</a>
         <a href="/records" class="{{ 'active' if active=='records' else '' }}">기록조회</a>
         <a href="/payroll" class="{{ 'active' if active=='payroll' else '' }}">급여관리</a>
@@ -1022,12 +996,7 @@ BASE_HTML = """
 """
 
 
-def render_page(
-    title: str,
-    active: str,
-    content: str,
-    quick_links: list[dict[str, str]] | None = None,
-) -> str:
+def render_page(title: str, active: str, content: str, quick_links: list[dict[str, str]] | None = None) -> str:
     return render_template_string(
         BASE_HTML,
         title=title,
@@ -1037,69 +1006,74 @@ def render_page(
     )
 
 
-def render_company_options(selected_company_id: int | None = None) -> str:
+def render_our_business_options(selected_id: int | None = None) -> str:
     options = []
-    for company in companies:
-        selected = "selected" if company["id"] == selected_company_id else ""
-        use_label = "사용" if company["is_active"] else "미사용"
-        options.append(
-            f'<option value="{company["id"]}" {selected}>{company["name"]} ({use_label})</option>'
-        )
+    for item in OurBusiness.query.order_by(OurBusiness.id.asc()).all():
+        selected = "selected" if item.id == selected_id else ""
+        use_label = "사용" if item.is_active else "미사용"
+        options.append(f'<option value="{item.id}" {selected}>{item.name} ({use_label})</option>')
     return "".join(options)
 
 
-def render_work_type_options(company_id: int, selected_work_type_id: int | None = None) -> str:
+def render_client_company_options(selected_id: int | None = None, our_business_id: int | None = None) -> str:
+    query = ClientCompany.query
+    if our_business_id is not None:
+        query = query.filter_by(our_business_id=our_business_id)
     options = []
-    for work_type in get_company_work_types(company_id):
-        selected = "selected" if work_type["id"] == selected_work_type_id else ""
-        options.append(f'<option value="{work_type["id"]}" {selected}>{work_type["name"]}</option>')
+    for item in query.order_by(ClientCompany.id.asc()).all():
+        selected = "selected" if item.id == selected_id else ""
+        options.append(f'<option value="{item.id}" {selected}>{item.name}</option>')
+    return "".join(options)
+
+
+def render_work_type_options(client_company_id: int, selected_work_type_id: int | None = None) -> str:
+    options = []
+    for work_type in get_client_company_work_types(client_company_id):
+        selected = "selected" if work_type.id == selected_work_type_id else ""
+        options.append(f'<option value="{work_type.id}" {selected}>{work_type.name}</option>')
     return "".join(options)
 
 
 @app.route("/")
 def home() -> str:
     current_date = request.args.get("work_date", today_str())
-    company_id_raw = request.args.get("company_id", "")
-    company_id = int(company_id_raw) if company_id_raw.isdigit() else None
-    filtered_employees = get_employees_by_company(company_id)
+    client_company_raw = request.args.get("client_company_id", "")
+    client_company_id = int(client_company_raw) if client_company_raw.isdigit() else None
+    filtered_employees = get_employees_by_client_company(client_company_id)
 
     total = len(filtered_employees)
-    before_count = count_status_for_company(company_id, current_date, "before_work")
-    working_count = count_status_for_company(company_id, current_date, "working")
-    completed_count = count_status_for_company(company_id, current_date, "completed")
-    hospital_count = count_status_for_company(company_id, current_date, "hospital")
-    absent_count = count_status_for_company(company_id, current_date, "absent")
+    before_count = count_status_for_client_company(client_company_id, current_date, "before_work")
+    working_count = count_status_for_client_company(client_company_id, current_date, "working")
+    completed_count = count_status_for_client_company(client_company_id, current_date, "completed")
+    hospital_count = count_status_for_client_company(client_company_id, current_date, "hospital")
+    absent_count = count_status_for_client_company(client_company_id, current_date, "absent")
 
     rows = ""
     for employee in filtered_employees:
-        company_name = get_company_name(employee["company_id"])
-        work_type_name = get_work_type_name(employee["work_type_id"])
-        display_status = get_display_status(employee["id"], current_date)
         rows += f"""
         <tr>
-            <td>{employee["id"]}</td>
-            <td><a href="/employees/{employee["id"]}">{employee["name"]}</a></td>
-            <td>{employee["nationality"]}</td>
-            <td>{company_name}</td>
-            <td>{work_type_name}</td>
-            <td>{status_badge(display_status)}</td>
+            <td>{employee.id}</td>
+            <td><a href="/employees/{employee.id}">{employee.name}</a></td>
+            <td>{employee.nationality}</td>
+            <td>{get_our_business_name(employee.our_business_id)}</td>
+            <td>{get_client_company_name(employee.current_client_company_id)}</td>
+            <td>{get_work_type_name(employee.work_type_id)}</td>
+            <td>{status_badge(get_display_status(employee.id, current_date))}</td>
         </tr>
         """
 
     if not rows:
-        rows = '<tr><td colspan="6">사원이 없습니다.</td></tr>'
+        rows = '<tr><td colspan="7">인력이 없습니다.</td></tr>'
 
-    company_options = ['<option value="">전체 회사</option>']
-    for company in companies:
-        selected = "selected" if company_id == company["id"] else ""
-        company_options.append(
-            f'<option value="{company["id"]}" {selected}>{company["name"]}</option>'
-        )
+    client_options = ['<option value="">전체 거래처</option>']
+    for client in ClientCompany.query.order_by(ClientCompany.id.asc()).all():
+        selected = "selected" if client_company_id == client.id else ""
+        client_options.append(f'<option value="{client.id}" {selected}>{client.name}</option>')
 
     content = f"""
     <div class="notice">
-        현재 구조는 운영형 흐름에 맞춘 메모리 기반 MVP입니다.
-        서버 재시작 시 데이터는 초기화됩니다.
+        데이터는 이제 SQLite DB 파일에 저장됩니다.
+        앱을 다시 켜도 유지됩니다.
     </div>
 
     <form method="get" class="panel" style="margin-bottom:18px;">
@@ -1110,8 +1084,8 @@ def home() -> str:
                     <input type="date" name="work_date" value="{current_date}">
                 </div>
                 <div>
-                    <label>회사 선택</label>
-                    <select name="company_id">{"".join(company_options)}</select>
+                    <label>거래처 선택</label>
+                    <select name="client_company_id">{"".join(client_options)}</select>
                 </div>
             </div>
             <div class="actions">
@@ -1122,7 +1096,7 @@ def home() -> str:
     </form>
 
     <div class="cards">
-        <div class="card"><div class="label">전체 사원</div><div class="value">{total}</div></div>
+        <div class="card"><div class="label">전체 인력</div><div class="value">{total}</div></div>
         <div class="card"><div class="label">출근전</div><div class="value">{before_count}</div></div>
         <div class="card"><div class="label">근무중</div><div class="value">{working_count}</div></div>
         <div class="card"><div class="label">퇴근완료</div><div class="value">{completed_count}</div></div>
@@ -1130,196 +1104,111 @@ def home() -> str:
         <div class="card"><div class="label">결근</div><div class="value">{absent_count}</div></div>
     </div>
 
-    <div class="content-grid">
-        <div class="panel">
-            <div class="panel-head">
-                <h2>사원 현황</h2>
-                <p>{current_date} 기준 상태</p>
-            </div>
-            <div class="panel-body">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>사번</th>
-                            <th>이름</th>
-                            <th>국적</th>
-                            <th>회사</th>
-                            <th>근무타입</th>
-                            <th>상태</th>
-                        </tr>
-                    </thead>
-                    <tbody>{rows}</tbody>
-                </table>
-            </div>
+    <div class="panel">
+        <div class="panel-head">
+            <h2>인력 현황</h2>
+            <p>{current_date} 기준</p>
         </div>
-
-        <div>
-            <div class="panel" style="margin-bottom:18px;">
-                <div class="panel-head">
-                    <h2>빠른 작업</h2>
-                    <p>관리자 직접 처리</p>
-                </div>
-                <div class="panel-body">
-                    <div class="actions" style="margin-top:0;">
-                        <a class="btn btn-primary" href="/companies/new">회사등록</a>
-                        <a class="btn btn-primary" href="/employees/new">사원등록</a>
-                        <a class="btn btn-green" href="/attendance">출퇴근관리</a>
-                        <a class="btn btn-sky" href="/records">기록조회</a>
-                        <a class="btn btn-orange" href="/payroll">급여관리</a>
-                    </div>
-                </div>
-            </div>
-
-            <div class="panel">
-                <div class="panel-head">
-                    <h2>운영 기준</h2>
-                    <p>1차 운영 버전 핵심 구조</p>
-                </div>
-                <div class="panel-body">
-                    <ul style="margin:0; padding-left:18px; line-height:1.8;">
-                        <li>멀티회사 관리</li>
-                        <li>회사별 근무타입 설정</li>
-                        <li>관리자 입력형 출퇴근</li>
-                        <li>직원 앱은 조회 중심</li>
-                        <li>출퇴근 기록 기반 급여 계산</li>
-                    </ul>
-                </div>
-            </div>
+        <div class="panel-body">
+            <table>
+                <thead>
+                    <tr>
+                        <th>번호</th>
+                        <th>이름</th>
+                        <th>국적</th>
+                        <th>우리사업자</th>
+                        <th>거래처</th>
+                        <th>근무타입</th>
+                        <th>상태</th>
+                    </tr>
+                </thead>
+                <tbody>{rows}</tbody>
+            </table>
         </div>
     </div>
     """
     return render_page("메인", "home", content)
 
 
-@app.route("/companies")
-def companies_page() -> str:
+@app.route("/our-businesses")
+def our_businesses_page() -> str:
     rows = ""
-    for company in companies:
-        active_label = "사용" if company["is_active"] else "미사용"
+    for item in OurBusiness.query.order_by(OurBusiness.id.asc()).all():
         rows += f"""
         <tr>
-            <td>{company["id"]}</td>
-            <td><a href="/companies/{company["id"]}">{company["name"]}</a></td>
-            <td>{company["business_number"]}</td>
-            <td>{company["phone"]}</td>
-            <td>{active_label}</td>
-            <td class="table-actions">
-                <a class="btn btn-white" href="/companies/{company["id"]}">상세</a>
-                <a class="btn btn-white" href="/companies/{company["id"]}/settings">설정</a>
-            </td>
+            <td>{item.id}</td>
+            <td><a href="/our-businesses/{item.id}">{item.name}</a></td>
+            <td>{item.business_number}</td>
+            <td>{item.phone}</td>
+            <td>{"사용" if item.is_active else "미사용"}</td>
         </tr>
         """
 
     content = f"""
     <div class="panel">
         <div class="panel-head">
-            <h2>회사목록</h2>
-            <p>멀티회사 기본정보 및 설정 관리</p>
+            <h2>우리사업자목록</h2>
+            <p>우리측 운영 사업자 관리</p>
         </div>
         <div class="panel-body">
             <div class="actions" style="margin-top:0; margin-bottom:16px;">
-                <a class="btn btn-primary" href="/companies/new">+ 회사등록</a>
+                <a class="btn btn-primary" href="/our-businesses/new">+ 우리사업자등록</a>
             </div>
             <table>
                 <thead>
                     <tr>
                         <th>번호</th>
-                        <th>회사명</th>
+                        <th>사업자명</th>
                         <th>사업자등록번호</th>
                         <th>대표전화</th>
                         <th>사용여부</th>
-                        <th>관리</th>
                     </tr>
                 </thead>
-                <tbody>{rows or '<tr><td colspan="6">회사가 없습니다.</td></tr>'}</tbody>
+                <tbody>{rows or '<tr><td colspan="5">데이터가 없습니다.</td></tr>'}</tbody>
             </table>
         </div>
     </div>
     """
     quick = [
-        {"label": "회사목록", "href": "/companies"},
-        {"label": "회사등록", "href": "/companies/new"},
+        {"label": "우리사업자목록", "href": "/our-businesses"},
+        {"label": "우리사업자등록", "href": "/our-businesses/new"},
     ]
-    return render_page("회사관리", "companies", content, quick)
+    return render_page("우리사업자관리", "our_businesses", content, quick)
 
 
-@app.route("/companies/new", methods=["GET", "POST"])
-def company_new() -> str:
+@app.route("/our-businesses/new", methods=["GET", "POST"])
+def our_business_new() -> str:
     if request.method == "POST":
-        company_id = next_id(companies)
-        is_active = request.form.get("is_active", "Y") == "Y"
-
-        companies.append(
-            {
-                "id": company_id,
-                "name": request.form["name"].strip(),
-                "ceo_name": request.form["ceo_name"].strip(),
-                "business_number": request.form["business_number"].strip(),
-                "phone": request.form["phone"].strip(),
-                "address": request.form["address"].strip(),
-                "business_type": request.form.get("business_type", "").strip(),
-                "business_item": request.form.get("business_item", "").strip(),
-                "email": request.form.get("email", "").strip(),
-                "is_active": is_active,
-                "memo": request.form.get("memo", "").strip(),
-                "created_at": today_str(),
-                "updated_at": today_str(),
-            }
+        item = OurBusiness(
+            name=request.form["name"].strip(),
+            ceo_name=request.form["ceo_name"].strip(),
+            business_number=request.form["business_number"].strip(),
+            phone=request.form["phone"].strip(),
+            address=request.form["address"].strip(),
+            business_type=request.form.get("business_type", "").strip(),
+            business_item=request.form.get("business_item", "").strip(),
+            email=request.form.get("email", "").strip(),
+            is_active=request.form.get("is_active", "Y") == "Y",
+            memo=request.form.get("memo", "").strip(),
+            created_at=today_str(),
+            updated_at=today_str(),
         )
-
-        company_settings.append(
-            {
-                "company_id": company_id,
-                "attendance_open_time": "08:00",
-                "late_standard_time": "09:00",
-                "workday_standard_hours": 8,
-                "hospital_paid": True,
-                "document_view_policy": "sensitive_super_admin_only",
-                "created_at": today_str(),
-                "updated_at": today_str(),
-            }
-        )
-
-        company_payroll_settings.append(
-            {
-                "company_id": company_id,
-                "default_pay_type": "monthly",
-                "base_salary": 2000000,
-                "daily_wage": 100000,
-                "hourly_wage": 10000,
-                "night_allowance_rate": 1.5,
-                "overtime_allowance_rate": 1.5,
-                "hospital_pay_type": "paid",
-                "absence_deduction_amount": 80000,
-                "meal_allowance": 0,
-                "transport_allowance": 0,
-                "position_allowance": 0,
-                "created_at": today_str(),
-                "updated_at": today_str(),
-            }
-        )
-
-        company_work_types.append(
-            {"id": next_id(company_work_types), "company_id": company_id, "name": "주간", "code": "DAY", "is_active": True}
-        )
-        company_work_types.append(
-            {"id": next_id(company_work_types), "company_id": company_id, "name": "야간", "code": "NIGHT", "is_active": True}
-        )
-
-        return redirect(url_for("companies_page"))
+        db.session.add(item)
+        db.session.commit()
+        return redirect(url_for("our_businesses_page"))
 
     content = """
     <div class="panel">
         <div class="panel-head">
-            <h2>회사등록</h2>
-            <p>회사 기본정보와 초기 설정 생성</p>
+            <h2>우리사업자등록</h2>
+            <p>우리측 운영 사업자 등록</p>
         </div>
         <div class="panel-body">
             <form method="post">
                 <div class="form-grid">
-                    <div><label>회사명</label><input name="name" required></div>
+                    <div><label>사업자명</label><input name="name" required></div>
                     <div><label>대표자명</label><input name="ceo_name" required></div>
-                    <div><label>사업자등록번호</label><input name="business_number" placeholder="123-45-67890" required></div>
+                    <div><label>사업자등록번호</label><input name="business_number" required></div>
                     <div><label>대표전화</label><input name="phone" required></div>
                     <div><label>주소</label><input name="address" required></div>
                     <div><label>업태</label><input name="business_type"></div>
@@ -1336,263 +1225,275 @@ def company_new() -> str:
                 </div>
                 <div class="actions">
                     <button class="btn btn-primary" type="submit">저장</button>
-                    <a class="btn btn-white" href="/companies">취소</a>
+                    <a class="btn btn-white" href="/our-businesses">취소</a>
                 </div>
             </form>
         </div>
     </div>
     """
     quick = [
-        {"label": "회사목록", "href": "/companies"},
-        {"label": "회사등록", "href": "/companies/new"},
+        {"label": "우리사업자목록", "href": "/our-businesses"},
+        {"label": "우리사업자등록", "href": "/our-businesses/new"},
     ]
-    return render_page("회사등록", "companies", content, quick)
+    return render_page("우리사업자등록", "our_businesses", content, quick)
 
 
-@app.route("/companies/<int:company_id>")
-def company_detail(company_id: int) -> str:
-    company = get_company(company_id)
-    if not company:
-        return "회사를 찾을 수 없습니다.", 404
+@app.route("/our-businesses/<int:our_business_id>")
+def our_business_detail(our_business_id: int) -> str:
+    item = get_our_business(our_business_id)
+    if not item:
+        return "우리사업자를 찾을 수 없습니다.", 404
 
-    work_types = get_company_work_types(company_id)
-    work_type_html = ", ".join(w["name"] for w in work_types) or "-"
+    client_count = ClientCompany.query.filter_by(our_business_id=our_business_id).count()
 
     content = f"""
     <div class="panel">
         <div class="panel-head">
-            <h2>회사상세</h2>
-            <p>{company["name"]} 기본 정보</p>
+            <h2>우리사업자상세</h2>
+            <p>{item.name}</p>
         </div>
         <div class="panel-body">
             <table>
-                <tr><th style="width:220px;">회사명</th><td>{company["name"]}</td></tr>
-                <tr><th>대표자명</th><td>{company["ceo_name"]}</td></tr>
-                <tr><th>사업자등록번호</th><td>{company["business_number"]}</td></tr>
-                <tr><th>대표전화</th><td>{company["phone"]}</td></tr>
-                <tr><th>주소</th><td>{company["address"]}</td></tr>
-                <tr><th>업태</th><td>{company["business_type"] or '-'}</td></tr>
-                <tr><th>종목</th><td>{company["business_item"] or '-'}</td></tr>
-                <tr><th>이메일</th><td>{company["email"] or '-'}</td></tr>
-                <tr><th>사용여부</th><td>{"사용" if company["is_active"] else "미사용"}</td></tr>
-                <tr><th>근무타입</th><td>{work_type_html}</td></tr>
-                <tr><th>메모</th><td>{company["memo"] or '-'}</td></tr>
+                <tr><th style="width:220px;">사업자명</th><td>{item.name}</td></tr>
+                <tr><th>대표자명</th><td>{item.ceo_name}</td></tr>
+                <tr><th>사업자등록번호</th><td>{item.business_number}</td></tr>
+                <tr><th>대표전화</th><td>{item.phone}</td></tr>
+                <tr><th>주소</th><td>{item.address}</td></tr>
+                <tr><th>업태</th><td>{item.business_type or '-'}</td></tr>
+                <tr><th>종목</th><td>{item.business_item or '-'}</td></tr>
+                <tr><th>이메일</th><td>{item.email or '-'}</td></tr>
+                <tr><th>사용여부</th><td>{"사용" if item.is_active else "미사용"}</td></tr>
+                <tr><th>거래처 수</th><td>{client_count}</td></tr>
+                <tr><th>메모</th><td>{item.memo or '-'}</td></tr>
             </table>
-            <div class="actions">
-                <a class="btn btn-white" href="/companies/{company_id}/settings">회사별 설정</a>
-            </div>
         </div>
     </div>
     """
     quick = [
-        {"label": "회사목록", "href": "/companies"},
-        {"label": "회사상세", "href": f"/companies/{company_id}"},
-        {"label": "회사별 설정", "href": f"/companies/{company_id}/settings"},
+        {"label": "우리사업자목록", "href": "/our-businesses"},
+        {"label": "우리사업자등록", "href": "/our-businesses/new"},
     ]
-    return render_page("회사상세", "companies", content, quick)
+    return render_page("우리사업자상세", "our_businesses", content, quick)
 
 
-@app.route("/companies/<int:company_id>/settings", methods=["GET", "POST"])
-def company_settings_page(company_id: int) -> str:
-    company = get_company(company_id)
-    if not company:
-        return "회사를 찾을 수 없습니다.", 404
-
-    setting = get_company_setting(company_id)
-    payroll_setting = get_company_payroll_setting(company_id)
-    if not setting or not payroll_setting:
-        return "회사 설정을 찾을 수 없습니다.", 404
-
-    if request.method == "POST":
-        form_type = request.form.get("form_type", "").strip()
-
-        if form_type == "work_type_add":
-            work_type_name = request.form.get("work_type_name", "").strip()
-            if work_type_name:
-                company_work_types.append(
-                    {
-                        "id": next_id(company_work_types),
-                        "company_id": company_id,
-                        "name": work_type_name,
-                        "code": work_type_name.upper().replace(" ", "_")[:20],
-                        "is_active": True,
-                    }
-                )
-            return redirect(url_for("company_settings_page", company_id=company_id))
-
-        if form_type == "company_setting_update":
-            setting["attendance_open_time"] = request.form.get("attendance_open_time", "08:00")
-            setting["late_standard_time"] = request.form.get("late_standard_time", "09:00")
-            setting["workday_standard_hours"] = int(request.form.get("workday_standard_hours", 8) or 8)
-            setting["hospital_paid"] = request.form.get("hospital_paid", "Y") == "Y"
-            setting["updated_at"] = today_str()
-
-            payroll_setting["default_pay_type"] = request.form.get("default_pay_type", "monthly")
-            payroll_setting["base_salary"] = int(request.form.get("base_salary", 0) or 0)
-            payroll_setting["daily_wage"] = int(request.form.get("daily_wage", 0) or 0)
-            payroll_setting["hourly_wage"] = int(request.form.get("hourly_wage", 0) or 0)
-            payroll_setting["night_allowance_rate"] = float(request.form.get("night_allowance_rate", 1.5) or 1.5)
-            payroll_setting["overtime_allowance_rate"] = float(request.form.get("overtime_allowance_rate", 1.5) or 1.5)
-            payroll_setting["hospital_pay_type"] = request.form.get("hospital_pay_type", "paid")
-            payroll_setting["absence_deduction_amount"] = int(request.form.get("absence_deduction_amount", 0) or 0)
-            payroll_setting["meal_allowance"] = int(request.form.get("meal_allowance", 0) or 0)
-            payroll_setting["transport_allowance"] = int(request.form.get("transport_allowance", 0) or 0)
-            payroll_setting["position_allowance"] = int(request.form.get("position_allowance", 0) or 0)
-            payroll_setting["updated_at"] = today_str()
-            return redirect(url_for("company_settings_page", company_id=company_id))
-
-    work_type_rows = ""
-    for index, work_type in enumerate(get_company_work_types(company_id), start=1):
-        work_type_rows += f"""
+@app.route("/client-companies")
+def client_companies_page() -> str:
+    rows = ""
+    for item in ClientCompany.query.order_by(ClientCompany.id.asc()).all():
+        rows += f"""
         <tr>
-            <td>{index}</td>
-            <td>{work_type["name"]}</td>
-            <td>{work_type["code"]}</td>
-            <td>{"사용" if work_type["is_active"] else "미사용"}</td>
+            <td>{item.id}</td>
+            <td>{get_our_business_name(item.our_business_id)}</td>
+            <td><a href="/client-companies/{item.id}">{item.name}</a></td>
+            <td>{item.business_number}</td>
+            <td>{item.phone}</td>
+            <td>{"사용" if item.is_active else "미사용"}</td>
         </tr>
         """
 
     content = f"""
     <div class="panel">
         <div class="panel-head">
-            <h2>회사별 설정</h2>
-            <p>{company["name"]} 기준 설정</p>
+            <h2>거래처목록</h2>
+            <p>우리사업자 소속 거래처 사업자 관리</p>
         </div>
         <div class="panel-body">
-            <div class="subtabs">
-                <span class="active">기본설정</span>
-                <span>근무타입설정</span>
-                <span>출퇴기준설정</span>
-                <span>문서설정</span>
-                <span>권한설정</span>
-                <span>급여설정</span>
+            <div class="actions" style="margin-top:0; margin-bottom:16px;">
+                <a class="btn btn-primary" href="/client-companies/new">+ 거래처등록</a>
             </div>
-
-            <form method="post" class="panel" style="box-shadow:none; border-radius:14px; margin-bottom:16px;">
-                <input type="hidden" name="form_type" value="company_setting_update">
-                <div class="panel-head">
-                    <h3>기본설정 / 출퇴기준 / 급여설정</h3>
-                    <p>1차 운영형 통합 설정</p>
-                </div>
-                <div class="panel-body">
-                    <div class="form-grid">
-                        <div><label>출근 가능 시작시간</label><input name="attendance_open_time" value="{setting["attendance_open_time"]}"></div>
-                        <div><label>지각 기준시간</label><input name="late_standard_time" value="{setting["late_standard_time"]}"></div>
-                        <div><label>1일 기준 근무시간</label><input type="number" name="workday_standard_hours" value="{setting["workday_standard_hours"]}"></div>
-                        <div>
-                            <label>병원 유급 여부</label>
-                            <select name="hospital_paid">
-                                <option value="Y" {"selected" if setting["hospital_paid"] else ""}>유급</option>
-                                <option value="N" {"selected" if not setting["hospital_paid"] else ""}>무급</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label>기본 급여형태</label>
-                            <select name="default_pay_type">
-                                <option value="monthly" {"selected" if payroll_setting["default_pay_type"] == "monthly" else ""}>월급제</option>
-                                <option value="daily" {"selected" if payroll_setting["default_pay_type"] == "daily" else ""}>일급제</option>
-                                <option value="hourly" {"selected" if payroll_setting["default_pay_type"] == "hourly" else ""}>시급제</option>
-                            </select>
-                        </div>
-                        <div><label>기본급</label><input type="number" name="base_salary" value="{payroll_setting["base_salary"]}"></div>
-                        <div><label>일급</label><input type="number" name="daily_wage" value="{payroll_setting["daily_wage"]}"></div>
-                        <div><label>시급</label><input type="number" name="hourly_wage" value="{payroll_setting["hourly_wage"]}"></div>
-                        <div><label>야간수당 배율</label><input type="number" step="0.1" name="night_allowance_rate" value="{payroll_setting["night_allowance_rate"]}"></div>
-                        <div><label>연장수당 배율</label><input type="number" step="0.1" name="overtime_allowance_rate" value="{payroll_setting["overtime_allowance_rate"]}"></div>
-                        <div>
-                            <label>병원 급여처리</label>
-                            <select name="hospital_pay_type">
-                                <option value="paid" {"selected" if payroll_setting["hospital_pay_type"] == "paid" else ""}>유급</option>
-                                <option value="unpaid" {"selected" if payroll_setting["hospital_pay_type"] == "unpaid" else ""}>무급</option>
-                            </select>
-                        </div>
-                        <div><label>결근 공제액</label><input type="number" name="absence_deduction_amount" value="{payroll_setting["absence_deduction_amount"]}"></div>
-                        <div><label>식대</label><input type="number" name="meal_allowance" value="{payroll_setting["meal_allowance"]}"></div>
-                        <div><label>교통비</label><input type="number" name="transport_allowance" value="{payroll_setting["transport_allowance"]}"></div>
-                        <div><label>직책수당</label><input type="number" name="position_allowance" value="{payroll_setting["position_allowance"]}"></div>
-                    </div>
-                    <div class="actions">
-                        <button class="btn btn-primary" type="submit">설정 저장</button>
-                    </div>
-                </div>
-            </form>
-
-            <div class="panel" style="box-shadow:none; border-radius:14px;">
-                <div class="panel-head">
-                    <h3>근무타입설정</h3>
-                    <p>회사마다 다른 근무타입 직접 관리</p>
-                </div>
-                <div class="panel-body">
-                    <form method="post" class="actions" style="margin-top:0; margin-bottom:16px;">
-                        <input type="hidden" name="form_type" value="work_type_add">
-                        <div style="min-width:260px;">
-                            <label>근무타입명</label>
-                            <input name="work_type_name" placeholder="예: 주간 / 야간 / 1조 / 2조">
-                        </div>
-                        <div>
-                            <button class="btn btn-primary" type="submit">근무타입 추가</button>
-                        </div>
-                    </form>
-
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>순서</th>
-                                <th>근무타입명</th>
-                                <th>코드</th>
-                                <th>사용여부</th>
-                            </tr>
-                        </thead>
-                        <tbody>{work_type_rows or '<tr><td colspan="4">근무타입이 없습니다.</td></tr>'}</tbody>
-                    </table>
-                </div>
-            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>번호</th>
+                        <th>우리사업자</th>
+                        <th>거래처명</th>
+                        <th>사업자등록번호</th>
+                        <th>대표전화</th>
+                        <th>사용여부</th>
+                    </tr>
+                </thead>
+                <tbody>{rows or '<tr><td colspan="6">데이터가 없습니다.</td></tr>'}</tbody>
+            </table>
         </div>
     </div>
     """
     quick = [
-        {"label": "회사목록", "href": "/companies"},
-        {"label": "회사상세", "href": f"/companies/{company_id}"},
-        {"label": "회사별 설정", "href": f"/companies/{company_id}/settings"},
+        {"label": "거래처목록", "href": "/client-companies"},
+        {"label": "거래처등록", "href": "/client-companies/new"},
     ]
-    return render_page("회사별 설정", "companies", content, quick)
+    return render_page("거래처관리", "client_companies", content, quick)
+
+
+@app.route("/client-companies/new", methods=["GET", "POST"])
+def client_company_new() -> str:
+    if request.method == "POST":
+        item = ClientCompany(
+            our_business_id=int(request.form["our_business_id"]),
+            name=request.form["name"].strip(),
+            ceo_name=request.form["ceo_name"].strip(),
+            business_number=request.form["business_number"].strip(),
+            phone=request.form["phone"].strip(),
+            address=request.form["address"].strip(),
+            business_type=request.form.get("business_type", "").strip(),
+            business_item=request.form.get("business_item", "").strip(),
+            email=request.form.get("email", "").strip(),
+            is_active=request.form.get("is_active", "Y") == "Y",
+            memo=request.form.get("memo", "").strip(),
+            created_at=today_str(),
+            updated_at=today_str(),
+        )
+        db.session.add(item)
+        db.session.commit()
+
+        db.session.add(
+            ClientCompanySetting(
+                client_company_id=item.id,
+                attendance_open_time="08:00",
+                late_standard_time="09:00",
+                workday_standard_hours=8,
+                hospital_paid=True,
+                document_view_policy="sensitive_super_admin_only",
+            )
+        )
+        db.session.add(
+            ClientCompanyPayrollSetting(
+                client_company_id=item.id,
+                default_pay_type="monthly",
+                base_salary=2200000,
+                daily_wage=100000,
+                hourly_wage=10000,
+                night_allowance_rate=1.5,
+                overtime_allowance_rate=1.5,
+                hospital_pay_type="paid",
+                absence_deduction_amount=80000,
+                meal_allowance=100000,
+                transport_allowance=70000,
+                position_allowance=30000,
+            )
+        )
+        db.session.add(ClientCompanyWorkType(client_company_id=item.id, name="주간", code="DAY", is_active=True))
+        db.session.add(ClientCompanyWorkType(client_company_id=item.id, name="야간", code="NIGHT", is_active=True))
+        db.session.commit()
+
+        return redirect(url_for("client_companies_page"))
+
+    business_options = render_our_business_options()
+
+    content = f"""
+    <div class="panel">
+        <div class="panel-head">
+            <h2>거래처등록</h2>
+            <p>우리사업자 소속 거래처 사업자 등록</p>
+        </div>
+        <div class="panel-body">
+            <form method="post">
+                <div class="form-grid">
+                    <div><label>우리사업자</label><select name="our_business_id">{business_options}</select></div>
+                    <div><label>거래처명</label><input name="name" required></div>
+                    <div><label>대표자명</label><input name="ceo_name" required></div>
+                    <div><label>사업자등록번호</label><input name="business_number" required></div>
+                    <div><label>대표전화</label><input name="phone" required></div>
+                    <div><label>주소</label><input name="address" required></div>
+                    <div><label>업태</label><input name="business_type"></div>
+                    <div><label>종목</label><input name="business_item"></div>
+                    <div><label>이메일</label><input name="email"></div>
+                    <div>
+                        <label>사용여부</label>
+                        <select name="is_active">
+                            <option value="Y">사용</option>
+                            <option value="N">미사용</option>
+                        </select>
+                    </div>
+                    <div style="grid-column: 1 / -1;"><label>메모</label><textarea name="memo"></textarea></div>
+                </div>
+                <div class="actions">
+                    <button class="btn btn-primary" type="submit">저장</button>
+                    <a class="btn btn-white" href="/client-companies">취소</a>
+                </div>
+            </form>
+        </div>
+    </div>
+    """
+    quick = [
+        {"label": "거래처목록", "href": "/client-companies"},
+        {"label": "거래처등록", "href": "/client-companies/new"},
+    ]
+    return render_page("거래처등록", "client_companies", content, quick)
+
+
+@app.route("/client-companies/<int:client_company_id>")
+def client_company_detail(client_company_id: int) -> str:
+    item = get_client_company(client_company_id)
+    if not item:
+        return "거래처를 찾을 수 없습니다.", 404
+
+    work_types = ", ".join(w.name for w in get_client_company_work_types(client_company_id)) or "-"
+    employee_count = Employee.query.filter_by(current_client_company_id=client_company_id).count()
+
+    content = f"""
+    <div class="panel">
+        <div class="panel-head">
+            <h2>거래처상세</h2>
+            <p>{item.name}</p>
+        </div>
+        <div class="panel-body">
+            <table>
+                <tr><th style="width:220px;">우리사업자</th><td>{get_our_business_name(item.our_business_id)}</td></tr>
+                <tr><th>거래처명</th><td>{item.name}</td></tr>
+                <tr><th>대표자명</th><td>{item.ceo_name}</td></tr>
+                <tr><th>사업자등록번호</th><td>{item.business_number}</td></tr>
+                <tr><th>대표전화</th><td>{item.phone}</td></tr>
+                <tr><th>주소</th><td>{item.address}</td></tr>
+                <tr><th>업태</th><td>{item.business_type or '-'}</td></tr>
+                <tr><th>종목</th><td>{item.business_item or '-'}</td></tr>
+                <tr><th>이메일</th><td>{item.email or '-'}</td></tr>
+                <tr><th>사용여부</th><td>{"사용" if item.is_active else "미사용"}</td></tr>
+                <tr><th>근무타입</th><td>{work_types}</td></tr>
+                <tr><th>배치 인원</th><td>{employee_count}</td></tr>
+                <tr><th>메모</th><td>{item.memo or '-'}</td></tr>
+            </table>
+        </div>
+    </div>
+    """
+    quick = [
+        {"label": "거래처목록", "href": "/client-companies"},
+        {"label": "거래처등록", "href": "/client-companies/new"},
+    ]
+    return render_page("거래처상세", "client_companies", content, quick)
 
 
 @app.route("/employees")
 def employees_page() -> str:
-    company_id_raw = request.args.get("company_id", "")
-    company_id = int(company_id_raw) if company_id_raw.isdigit() else None
+    client_company_raw = request.args.get("client_company_id", "")
+    client_company_id = int(client_company_raw) if client_company_raw.isdigit() else None
 
     rows = ""
-    for employee in get_employees_by_company(company_id):
-        company_name = get_company_name(employee["company_id"])
-        work_type_name = get_work_type_name(employee["work_type_id"])
+    for employee in get_employees_by_client_company(client_company_id):
         rows += f"""
         <tr>
-            <td>{employee["id"]}</td>
-            <td><a href="/employees/{employee["id"]}">{employee["name"]}</a></td>
-            <td>{employee["nationality"]}</td>
-            <td>{company_name}</td>
-            <td>{work_type_name}</td>
-            <td>{PAY_TYPE_LABELS.get(employee["pay_type"], "-")}</td>
-            <td>{status_badge(get_today_status(employee["id"]))}</td>
+            <td>{employee.id}</td>
+            <td><a href="/employees/{employee.id}">{employee.name}</a></td>
+            <td>{employee.nationality}</td>
+            <td>{get_our_business_name(employee.our_business_id)}</td>
+            <td>{get_client_company_name(employee.current_client_company_id)}</td>
+            <td>{get_work_type_name(employee.work_type_id)}</td>
+            <td>{PAY_TYPE_LABELS.get(employee.pay_type, "-")}</td>
+            <td>{status_badge(get_today_status(employee.id))}</td>
         </tr>
         """
 
-    filter_options = ['<option value="">전체 회사</option>']
-    for company in companies:
-        selected = "selected" if company["id"] == company_id else ""
-        filter_options.append(
-            f'<option value="{company["id"]}" {selected}>{company["name"]}</option>'
-        )
+    filter_options = ['<option value="">전체 거래처</option>']
+    for item in ClientCompany.query.order_by(ClientCompany.id.asc()).all():
+        selected = "selected" if item.id == client_company_id else ""
+        filter_options.append(f'<option value="{item.id}" {selected}>{item.name}</option>')
 
     content = f"""
     <div class="panel" style="margin-bottom:18px;">
         <div class="panel-body">
             <form method="get" class="actions" style="margin-top:0;">
                 <div style="min-width:260px;">
-                    <label>회사 필터</label>
-                    <select name="company_id">{"".join(filter_options)}</select>
+                    <label>거래처 필터</label>
+                    <select name="client_company_id">{"".join(filter_options)}</select>
                 </div>
                 <div>
                     <button class="btn btn-white" type="submit">조회</button>
@@ -1606,99 +1507,110 @@ def employees_page() -> str:
 
     <div class="panel">
         <div class="panel-head">
-            <h2>사원목록</h2>
-            <p>회사 / 근무타입 / 급여형태 기준 관리</p>
+            <h2>인력목록</h2>
+            <p>우리사업자 / 거래처 / 근무타입 기준 관리</p>
         </div>
         <div class="panel-body">
             <div class="actions" style="margin-top:0; margin-bottom:16px;">
-                <a class="btn btn-primary" href="/employees/new">사원등록</a>
+                <a class="btn btn-primary" href="/employees/new">인력등록</a>
             </div>
             <table>
                 <thead>
                     <tr>
-                        <th>사번</th>
+                        <th>번호</th>
                         <th>이름</th>
                         <th>국적</th>
-                        <th>회사</th>
+                        <th>우리사업자</th>
+                        <th>거래처</th>
                         <th>근무타입</th>
                         <th>급여형태</th>
                         <th>오늘 상태</th>
                     </tr>
                 </thead>
-                <tbody>{rows or '<tr><td colspan="7">사원이 없습니다.</td></tr>'}</tbody>
+                <tbody>{rows or '<tr><td colspan="8">인력이 없습니다.</td></tr>'}</tbody>
             </table>
         </div>
     </div>
     """
     quick = [
-        {"label": "사원목록", "href": "/employees"},
-        {"label": "사원등록", "href": "/employees/new"},
+        {"label": "인력목록", "href": "/employees"},
+        {"label": "인력등록", "href": "/employees/new"},
     ]
-    return render_page("사원관리", "employees", content, quick)
+    return render_page("인력관리", "employees", content, quick)
 
 
 @app.route("/employees/new", methods=["GET", "POST"])
 def employee_new() -> str:
-    if not companies:
-        return "먼저 회사를 등록하세요.", 400
+    businesses = OurBusiness.query.order_by(OurBusiness.id.asc()).all()
+    if not businesses:
+        return "먼저 우리사업자를 등록하세요.", 400
 
-    selected_company_raw = request.values.get("company_id", str(companies[0]["id"]))
-    selected_company_id = int(selected_company_raw) if selected_company_raw.isdigit() else companies[0]["id"]
+    selected_our_business_raw = request.values.get("our_business_id", str(businesses[0].id))
+    selected_our_business_id = int(selected_our_business_raw) if selected_our_business_raw.isdigit() else businesses[0].id
 
-    work_types = get_company_work_types(selected_company_id)
+    clients = ClientCompany.query.filter_by(our_business_id=selected_our_business_id).order_by(ClientCompany.id.asc()).all()
+    if not clients:
+        return "선택한 우리사업자의 거래처가 없습니다. 먼저 거래처를 등록하세요.", 400
+
+    selected_client_raw = request.values.get("client_company_id", str(clients[0].id))
+    selected_client_company_id = int(selected_client_raw) if selected_client_raw.isdigit() else clients[0].id
+    work_types = get_client_company_work_types(selected_client_company_id)
     if not work_types:
-        return "선택한 회사의 근무타입이 없습니다.", 400
+        return "선택한 거래처의 근무타입이 없습니다.", 400
 
     if request.method == "POST":
-        employee_id = next_id(employees)
-        employees.append(
-            {
-                "id": employee_id,
-                "company_id": int(request.form["company_id"]),
-                "name": request.form["name"].strip(),
-                "nationality": request.form["nationality"].strip(),
-                "phone": request.form.get("phone", "").strip(),
-                "hire_date": request.form.get("hire_date", today_str()),
-                "status": "active",
-                "work_type_id": int(request.form["work_type_id"]),
-                "pay_type": request.form.get("pay_type", "monthly"),
-                "created_at": today_str(),
-                "updated_at": today_str(),
-            }
+        item = Employee(
+            our_business_id=int(request.form["our_business_id"]),
+            current_client_company_id=int(request.form["client_company_id"]),
+            name=request.form["name"].strip(),
+            nationality=request.form["nationality"].strip(),
+            phone=request.form.get("phone", "").strip(),
+            hire_date=request.form.get("hire_date", today_str()),
+            status="active",
+            work_type_id=int(request.form["work_type_id"]),
+            pay_type=request.form.get("pay_type", "monthly"),
+            created_at=today_str(),
+            updated_at=today_str(),
         )
+        db.session.add(item)
+        db.session.commit()
         return redirect(url_for("employees_page"))
 
-    company_options = render_company_options(selected_company_id)
-    work_type_options = render_work_type_options(selected_company_id)
+    business_options = render_our_business_options(selected_our_business_id)
+    client_options = render_client_company_options(selected_client_company_id, selected_our_business_id)
+    work_type_options = render_work_type_options(selected_client_company_id)
 
     content = f"""
     <div class="panel">
         <div class="panel-head">
-            <h2>사원등록</h2>
-            <p>회사별 근무타입과 급여형태 기준 입력</p>
+            <h2>인력등록</h2>
+            <p>우리사업자와 거래처에 배치되는 인력 등록</p>
         </div>
         <div class="panel-body">
             <form method="get" class="panel" style="box-shadow:none; border-radius:14px; margin-bottom:16px;">
                 <div class="panel-body">
                     <div class="form-grid">
                         <div>
-                            <label>회사 선택</label>
-                            <select name="company_id" onchange="this.form.submit()">{company_options}</select>
+                            <label>우리사업자</label>
+                            <select name="our_business_id" onchange="this.form.submit()">{business_options}</select>
                         </div>
-                        <div class="muted" style="padding-top:32px;">
-                            회사 변경 시 해당 회사의 근무타입 목록으로 갱신됩니다.
+                        <div>
+                            <label>거래처</label>
+                            <select name="client_company_id" onchange="this.form.submit()">{client_options}</select>
                         </div>
                     </div>
                 </div>
             </form>
 
             <form method="post">
-                <input type="hidden" name="company_id" value="{selected_company_id}">
+                <input type="hidden" name="our_business_id" value="{selected_our_business_id}">
+                <input type="hidden" name="client_company_id" value="{selected_client_company_id}">
                 <div class="form-grid">
-                    <div><label>회사</label><input value="{get_company_name(selected_company_id)}" disabled></div>
-                    <div><label>이름</label><input name="name" placeholder="예: 성조" required></div>
-                    <div><label>국적</label><input name="nationality" placeholder="예: 한국" required></div>
-                    <div><label>연락처</label><input name="phone" placeholder="010-0000-0000"></div>
+                    <div><label>우리사업자</label><input value="{get_our_business_name(selected_our_business_id)}" disabled></div>
+                    <div><label>거래처</label><input value="{get_client_company_name(selected_client_company_id)}" disabled></div>
+                    <div><label>이름</label><input name="name" required></div>
+                    <div><label>국적</label><input name="nationality" required></div>
+                    <div><label>연락처</label><input name="phone"></div>
                     <div><label>입사일</label><input type="date" name="hire_date" value="{today_str()}"></div>
                     <div>
                         <label>급여형태</label>
@@ -1708,7 +1620,7 @@ def employee_new() -> str:
                             <option value="hourly">시급제</option>
                         </select>
                     </div>
-                    <div style="grid-column: 1 / -1;">
+                    <div>
                         <label>근무타입</label>
                         <select name="work_type_id">{work_type_options}</select>
                     </div>
@@ -1722,54 +1634,46 @@ def employee_new() -> str:
     </div>
     """
     quick = [
-        {"label": "사원목록", "href": "/employees"},
-        {"label": "사원등록", "href": "/employees/new"},
+        {"label": "인력목록", "href": "/employees"},
+        {"label": "인력등록", "href": "/employees/new"},
     ]
-    return render_page("사원등록", "employees", content, quick)
+    return render_page("인력등록", "employees", content, quick)
 
 
 @app.route("/employees/<int:employee_id>", methods=["GET", "POST"])
 def employee_detail(employee_id: int) -> str:
     employee = get_employee(employee_id)
     if not employee:
-        return "사원을 찾을 수 없습니다.", 404
+        return "인력을 찾을 수 없습니다.", 404
 
     if request.method == "POST":
         file_name = request.form.get("file_name", "").strip() or "unnamed.pdf"
-        employee_documents.append(
-            {
-                "id": next_id(employee_documents),
-                "employee_id": employee_id,
-                "document_type": request.form.get("document_type", "other"),
-                "file_name": file_name,
-                "file_path": f"/uploads/{file_name}",
-                "file_mime_type": request.form.get("file_mime_type", "application/pdf"),
-                "is_sensitive": request.form.get("is_sensitive", "Y") == "Y",
-                "uploaded_by": "super_admin",
-                "created_at": today_str(),
-            }
+        doc = EmployeeDocument(
+            employee_id=employee_id,
+            document_type=request.form.get("document_type", "other"),
+            file_name=file_name,
+            file_path=f"/uploads/{file_name}",
+            file_mime_type=request.form.get("file_mime_type", "application/pdf"),
+            is_sensitive=request.form.get("is_sensitive", "Y") == "Y",
+            uploaded_by="super_admin",
+            created_at=today_str(),
         )
+        db.session.add(doc)
+        db.session.commit()
         return redirect(url_for("employee_detail", employee_id=employee_id))
 
-    company_name = get_company_name(employee["company_id"])
-    work_type_name = get_work_type_name(employee["work_type_id"])
     attendance_rows = ""
-
-    employee_records = sorted(
-        [r for r in attendance_records if r["employee_id"] == employee_id],
-        key=lambda item: item["work_date"],
-        reverse=True,
-    )
+    employee_records = AttendanceRecord.query.filter_by(employee_id=employee_id).order_by(AttendanceRecord.work_date.desc()).all()
     for index, record in enumerate(employee_records, start=1):
         attendance_rows += f"""
         <tr>
             <td>{index}</td>
-            <td>{record["work_date"]}</td>
-            <td>{get_work_type_name(record["work_type_id"])}</td>
-            <td>{record["check_in_at"] or '-'}</td>
-            <td>{record["check_out_at"] or '-'}</td>
-            <td>{status_badge(record["status"])}</td>
-            <td>{record["reason"] or '-'}</td>
+            <td>{record.work_date}</td>
+            <td>{get_work_type_name(record.work_type_id)}</td>
+            <td>{record.check_in_at or '-'}</td>
+            <td>{record.check_out_at or '-'}</td>
+            <td>{status_badge(record.status)}</td>
+            <td>{record.reason or '-'}</td>
         </tr>
         """
 
@@ -1778,18 +1682,18 @@ def employee_detail(employee_id: int) -> str:
         document_rows += f"""
         <tr>
             <td>{index}</td>
-            <td>{DOCUMENT_TYPE_LABELS.get(document["document_type"], document["document_type"])}</td>
-            <td>{document["file_name"]}</td>
-            <td>{document["file_mime_type"]}</td>
-            <td>{'민감' if document["is_sensitive"] else '일반'}</td>
-            <td>{document["created_at"]}</td>
+            <td>{DOCUMENT_TYPE_LABELS.get(document.document_type, document.document_type)}</td>
+            <td>{document.file_name}</td>
+            <td>{document.file_mime_type}</td>
+            <td>{'민감' if document.is_sensitive else '일반'}</td>
+            <td>{document.created_at}</td>
         </tr>
         """
 
     content = f"""
     <div class="two-col">
         <div class="side-box" style="padding:14px;">
-            <h3 style="margin:0 0 12px;">사원 사진</h3>
+            <h3 style="margin:0 0 12px;">인력 사진</h3>
             <div class="photo-box">사진 등록 영역</div>
             <div class="actions">
                 <button class="btn btn-primary" type="button">사진 등록</button>
@@ -1800,18 +1704,19 @@ def employee_detail(employee_id: int) -> str:
         <div>
             <div class="panel" style="margin-bottom:18px;">
                 <div class="panel-head">
-                    <h2>사원상세</h2>
-                    <p>기본정보 / 문서 / 출퇴근 기록 연결</p>
+                    <h2>인력상세</h2>
+                    <p>기본정보 / 문서 / 출퇴근 기록</p>
                 </div>
                 <div class="panel-body">
                     <table>
-                        <tr><th style="width:220px;">이름</th><td>{employee["name"]}</td></tr>
-                        <tr><th>국적</th><td>{employee["nationality"]}</td></tr>
-                        <tr><th>회사</th><td>{company_name}</td></tr>
-                        <tr><th>근무타입</th><td>{work_type_name}</td></tr>
-                        <tr><th>연락처</th><td>{employee["phone"] or '-'}</td></tr>
-                        <tr><th>입사일</th><td>{employee["hire_date"]}</td></tr>
-                        <tr><th>급여형태</th><td>{PAY_TYPE_LABELS.get(employee["pay_type"], '-')}</td></tr>
+                        <tr><th style="width:220px;">이름</th><td>{employee.name}</td></tr>
+                        <tr><th>국적</th><td>{employee.nationality}</td></tr>
+                        <tr><th>우리사업자</th><td>{get_our_business_name(employee.our_business_id)}</td></tr>
+                        <tr><th>거래처</th><td>{get_client_company_name(employee.current_client_company_id)}</td></tr>
+                        <tr><th>근무타입</th><td>{get_work_type_name(employee.work_type_id)}</td></tr>
+                        <tr><th>연락처</th><td>{employee.phone or '-'}</td></tr>
+                        <tr><th>입사일</th><td>{employee.hire_date}</td></tr>
+                        <tr><th>급여형태</th><td>{PAY_TYPE_LABELS.get(employee.pay_type, '-')}</td></tr>
                         <tr><th>오늘 상태</th><td>{status_badge(get_today_status(employee_id))}</td></tr>
                     </table>
                 </div>
@@ -1820,7 +1725,7 @@ def employee_detail(employee_id: int) -> str:
             <div class="panel">
                 <div class="panel-head">
                     <h2>문서 등록</h2>
-                    <p>PDF / JPG 등 파일 메타데이터 등록</p>
+                    <p>파일 메타데이터 저장</p>
                 </div>
                 <div class="panel-body">
                     <form method="post">
@@ -1905,17 +1810,17 @@ def employee_detail(employee_id: int) -> str:
     </div>
     """
     quick = [
-        {"label": "사원목록", "href": "/employees"},
-        {"label": "사원등록", "href": "/employees/new"},
+        {"label": "인력목록", "href": "/employees"},
+        {"label": "인력등록", "href": "/employees/new"},
     ]
-    return render_page("사원상세", "employees", content, quick)
+    return render_page("인력상세", "employees", content, quick)
 
 
 @app.route("/attendance", methods=["GET", "POST"])
 def attendance_page() -> str:
     selected_date = request.values.get("work_date", today_str())
-    selected_company_raw = request.values.get("company_id", "")
-    selected_company_id = int(selected_company_raw) if selected_company_raw.isdigit() else None
+    selected_client_raw = request.values.get("client_company_id", "")
+    selected_client_company_id = int(selected_client_raw) if selected_client_raw.isdigit() else None
 
     if request.method == "POST":
         update_attendance(
@@ -1926,45 +1831,43 @@ def attendance_page() -> str:
             overtime_minutes=int(request.form.get("overtime_minutes", 0) or 0),
             night_minutes=int(request.form.get("night_minutes", 0) or 0),
         )
-        redirect_company_id = request.form.get("company_id", "")
+        redirect_client_id = request.form.get("client_company_id", "")
         return redirect(
             url_for(
                 "attendance_page",
                 work_date=request.form["work_date"],
-                company_id=redirect_company_id,
+                client_company_id=redirect_client_id,
             )
         )
 
-    employee_list = get_employees_by_company(selected_company_id)
-    company_filter_options = ['<option value="">전체 회사</option>']
-    for company in companies:
-        selected = "selected" if selected_company_id == company["id"] else ""
-        company_filter_options.append(
-            f'<option value="{company["id"]}" {selected}>{company["name"]}</option>'
-        )
+    employee_list = get_employees_by_client_company(selected_client_company_id)
+    client_filter_options = ['<option value="">전체 거래처</option>']
+    for client in ClientCompany.query.order_by(ClientCompany.id.asc()).all():
+        selected = "selected" if selected_client_company_id == client.id else ""
+        client_filter_options.append(f'<option value="{client.id}" {selected}>{client.name}</option>')
 
     employee_options = ""
     for employee in employee_list:
-        company_name = get_company_name(employee["company_id"])
         employee_options += (
-            f'<option value="{employee["id"]}">'
-            f'{employee["name"]} / {employee["nationality"]} / {company_name} / {get_work_type_name(employee["work_type_id"])}'
+            f'<option value="{employee.id}">'
+            f'{employee.name} / {employee.nationality} / {get_client_company_name(employee.current_client_company_id)} / {get_work_type_name(employee.work_type_id)}'
             f"</option>"
         )
 
     rows = ""
     for employee in employee_list:
-        record = get_attendance_record(employee["id"], selected_date)
+        record = get_attendance_record(employee.id, selected_date)
         rows += f"""
         <tr>
-            <td>{employee["name"]}</td>
-            <td>{employee["nationality"]}</td>
-            <td>{get_company_name(employee["company_id"])}</td>
-            <td>{get_work_type_name(employee["work_type_id"])}</td>
-            <td>{status_badge(record["status"] if record else "before_work")}</td>
-            <td>{record["check_in_at"] if record and record["check_in_at"] else '-'}</td>
-            <td>{record["check_out_at"] if record and record["check_out_at"] else '-'}</td>
-            <td>{record["reason"] if record and record["reason"] else '-'}</td>
+            <td>{employee.name}</td>
+            <td>{employee.nationality}</td>
+            <td>{get_our_business_name(employee.our_business_id)}</td>
+            <td>{get_client_company_name(employee.current_client_company_id)}</td>
+            <td>{get_work_type_name(employee.work_type_id)}</td>
+            <td>{status_badge(record.status if record else "before_work")}</td>
+            <td>{record.check_in_at if record and record.check_in_at else '-'}</td>
+            <td>{record.check_out_at if record and record.check_out_at else '-'}</td>
+            <td>{record.reason if record and record.reason else '-'}</td>
         </tr>
         """
 
@@ -1982,8 +1885,8 @@ def attendance_page() -> str:
                         <input type="date" name="work_date" value="{selected_date}">
                     </div>
                     <div>
-                        <label>회사 선택</label>
-                        <select name="company_id">{"".join(company_filter_options)}</select>
+                        <label>거래처 선택</label>
+                        <select name="client_company_id">{"".join(client_filter_options)}</select>
                     </div>
                     <div>
                         <button class="btn btn-white" type="submit">조회</button>
@@ -1998,7 +1901,8 @@ def attendance_page() -> str:
                         <tr>
                             <th>이름</th>
                             <th>국적</th>
-                            <th>회사</th>
+                            <th>우리사업자</th>
+                            <th>거래처</th>
                             <th>근무타입</th>
                             <th>상태</th>
                             <th>출근</th>
@@ -2006,7 +1910,7 @@ def attendance_page() -> str:
                             <th>사유</th>
                         </tr>
                     </thead>
-                    <tbody>{rows or '<tr><td colspan="8">사원이 없습니다.</td></tr>'}</tbody>
+                    <tbody>{rows or '<tr><td colspan="9">인력이 없습니다.</td></tr>'}</tbody>
                 </table>
             </div>
         </div>
@@ -2018,9 +1922,9 @@ def attendance_page() -> str:
             </div>
             <div class="panel-body">
                 <form method="post">
-                    <input type="hidden" name="company_id" value="{selected_company_id or ''}">
+                    <input type="hidden" name="client_company_id" value="{selected_client_company_id or ''}">
 
-                    <label>사원 선택</label>
+                    <label>인력 선택</label>
                     <select name="employee_id" required>{employee_options}</select>
 
                     <label>날짜</label>
@@ -2061,23 +1965,21 @@ def attendance_page() -> str:
 
 @app.route("/records")
 def records_page() -> str:
-    selected_company_raw = request.args.get("company_id", "")
-    selected_company_id = int(selected_company_raw) if selected_company_raw.isdigit() else None
+    selected_client_raw = request.args.get("client_company_id", "")
+    selected_client_company_id = int(selected_client_raw) if selected_client_raw.isdigit() else None
     selected_month = request.args.get("month", month_str_default())
     selected_tab = request.args.get("tab", "all")
     year, month = parse_month(selected_month)
 
-    company_filter_options = ['<option value="">전체 회사</option>']
-    for company in companies:
-        selected = "selected" if selected_company_id == company["id"] else ""
-        company_filter_options.append(
-            f'<option value="{company["id"]}" {selected}>{company["name"]}</option>'
-        )
+    client_filter_options = ['<option value="">전체 거래처</option>']
+    for client in ClientCompany.query.order_by(ClientCompany.id.asc()).all():
+        selected = "selected" if selected_client_company_id == client.id else ""
+        client_filter_options.append(f'<option value="{client.id}" {selected}>{client.name}</option>')
 
     subtabs = f"""
     <div class="subtabs">
-        <a class="{'active' if selected_tab == 'all' else ''}" href="/records?tab=all&company_id={selected_company_id or ''}&month={selected_month}">전체 출퇴기록</a>
-        <a class="{'active' if selected_tab == 'monthly' else ''}" href="/records?tab=monthly&company_id={selected_company_id or ''}&month={selected_month}">월별 출석현황</a>
+        <a class="{'active' if selected_tab == 'all' else ''}" href="/records?tab=all&client_company_id={selected_client_company_id or ''}&month={selected_month}">전체 출퇴기록</a>
+        <a class="{'active' if selected_tab == 'monthly' else ''}" href="/records?tab=monthly&client_company_id={selected_client_company_id or ''}&month={selected_month}">월별 출석현황</a>
     </div>
     """
 
@@ -2087,8 +1989,8 @@ def records_page() -> str:
             <form method="get" class="actions" style="margin-top:0;">
                 <input type="hidden" name="tab" value="{selected_tab}">
                 <div>
-                    <label>회사 필터</label>
-                    <select name="company_id">{"".join(company_filter_options)}</select>
+                    <label>거래처 필터</label>
+                    <select name="client_company_id">{"".join(client_filter_options)}</select>
                 </div>
                 <div>
                     <label>월 선택</label>
@@ -2104,13 +2006,13 @@ def records_page() -> str:
 
     if selected_tab == "monthly":
         days_in_month = monthrange(year, month)[1]
-        employees_for_grid = get_employees_by_company(selected_company_id)
+        employees_for_grid = get_employees_by_client_company(selected_client_company_id)
 
         header_days = "".join(f"<th>{day}</th>" for day in range(1, days_in_month + 1))
         month_rows = ""
 
         for employee in employees_for_grid:
-            monthly_map = get_month_attendance_map(employee["id"], year, month)
+            monthly_map = get_month_attendance_map(employee.id, year, month)
             present_cnt = 0
             hospital_cnt = 0
             absent_cnt = 0
@@ -2118,14 +2020,14 @@ def records_page() -> str:
             off_cnt = 0
 
             month_rows += (
-                f'<tr><td class="name-col"><a href="/employees/{employee["id"]}">{employee["name"]}</a></td>'
-                f'<td class="nation-col">{employee["nationality"]}</td>'
+                f'<tr><td class="name-col"><a href="/employees/{employee.id}">{employee.name}</a></td>'
+                f'<td class="nation-col">{employee.nationality}</td>'
             )
 
             for day in range(1, days_in_month + 1):
                 record = monthly_map.get(day)
                 day_mark = get_day_mark(record)
-                weekday = datetime(year, month, day).weekday()
+                weekday = date(year, month, day).weekday()
 
                 if day_mark == "O":
                     present_cnt += 1
@@ -2174,44 +2076,40 @@ def records_page() -> str:
                             <th>휴무</th>
                         </tr>
                     </thead>
-                    <tbody>{month_rows or '<tr><td colspan="100">사원이 없습니다.</td></tr>'}</tbody>
+                    <tbody>{month_rows or '<tr><td colspan="100">인력이 없습니다.</td></tr>'}</tbody>
                 </table>
             </div>
         </div>
         """
     else:
-        filtered_records = []
-        for record in attendance_records:
-            dt = parse_date(record["work_date"])
-            if dt.year != year or dt.month != month:
-                continue
-            if selected_company_id and record["company_id"] != selected_company_id:
-                continue
-            filtered_records.append(record)
-
-        filtered_records.sort(
-            key=lambda item: (item["work_date"], item["employee_id"]),
-            reverse=True,
-        )
+        query = AttendanceRecord.query
+        if selected_client_company_id is not None:
+            query = query.filter_by(client_company_id=selected_client_company_id)
+        filtered_records = [
+            record
+            for record in query.order_by(AttendanceRecord.work_date.desc(), AttendanceRecord.employee_id.asc()).all()
+            if parse_date(record.work_date).year == year and parse_date(record.work_date).month == month
+        ]
 
         record_rows = ""
         for index, record in enumerate(filtered_records, start=1):
-            employee = get_employee(record["employee_id"])
+            employee = get_employee(record.employee_id)
             if not employee:
                 continue
 
             record_rows += f"""
             <tr>
                 <td>{index}</td>
-                <td>{record["work_date"]}</td>
-                <td><a href="/employees/{employee["id"]}">{employee["name"]}</a></td>
-                <td>{employee["nationality"]}</td>
-                <td>{get_company_name(record["company_id"])}</td>
-                <td>{get_work_type_name(record["work_type_id"])}</td>
-                <td>{record["check_in_at"] or '-'}</td>
-                <td>{record["check_out_at"] or '-'}</td>
-                <td>{status_badge(record["status"])}</td>
-                <td>{record["reason"] or '-'}</td>
+                <td>{record.work_date}</td>
+                <td><a href="/employees/{employee.id}">{employee.name}</a></td>
+                <td>{employee.nationality}</td>
+                <td>{get_our_business_name(record.our_business_id)}</td>
+                <td>{get_client_company_name(record.client_company_id)}</td>
+                <td>{get_work_type_name(record.work_type_id)}</td>
+                <td>{record.check_in_at or '-'}</td>
+                <td>{record.check_out_at or '-'}</td>
+                <td>{status_badge(record.status)}</td>
+                <td>{record.reason or '-'}</td>
             </tr>
             """
 
@@ -2227,9 +2125,10 @@ def records_page() -> str:
                         <tr>
                             <th>번호</th>
                             <th>날짜</th>
-                            <th>사원명</th>
+                            <th>이름</th>
                             <th>국적</th>
-                            <th>회사</th>
+                            <th>우리사업자</th>
+                            <th>거래처</th>
                             <th>근무타입</th>
                             <th>출근</th>
                             <th>퇴근</th>
@@ -2237,7 +2136,7 @@ def records_page() -> str:
                             <th>사유</th>
                         </tr>
                     </thead>
-                    <tbody>{record_rows or '<tr><td colspan="10">기록이 없습니다.</td></tr>'}</tbody>
+                    <tbody>{record_rows or '<tr><td colspan="11">기록이 없습니다.</td></tr>'}</tbody>
                 </table>
             </div>
         </div>
@@ -2248,7 +2147,6 @@ def records_page() -> str:
     {filter_form}
     {tab_content}
     """
-
     quick = [
         {"label": "전체 출퇴기록", "href": "/records?tab=all"},
         {"label": "월별 출석현황", "href": "/records?tab=monthly"},
@@ -2258,12 +2156,16 @@ def records_page() -> str:
 
 @app.route("/payroll")
 def payroll_page() -> str:
-    selected_company_raw = request.args.get("company_id", str(companies[0]["id"]) if companies else "")
-    selected_company_id = int(selected_company_raw) if selected_company_raw.isdigit() else None
+    clients = ClientCompany.query.order_by(ClientCompany.id.asc()).all()
+    if not clients:
+        return "먼저 거래처를 등록하세요.", 400
+
+    selected_client_raw = request.args.get("client_company_id", str(clients[0].id))
+    selected_client_company_id = int(selected_client_raw) if selected_client_raw.isdigit() else clients[0].id
     selected_month = request.args.get("month", month_str_default())
     year, month = parse_month(selected_month)
 
-    filtered_employees = get_employees_by_company(selected_company_id)
+    filtered_employees = get_employees_by_client_company(selected_client_company_id)
     rows = ""
     total_final_amount = 0
 
@@ -2273,9 +2175,9 @@ def payroll_page() -> str:
 
         rows += f"""
         <tr>
-            <td><a href="/employees/{employee["id"]}">{employee["name"]}</a></td>
-            <td>{employee["nationality"]}</td>
-            <td>{PAY_TYPE_LABELS.get(employee["pay_type"], '-')}</td>
+            <td><a href="/employees/{employee.id}">{employee.name}</a></td>
+            <td>{employee.nationality}</td>
+            <td>{PAY_TYPE_LABELS.get(employee.pay_type, '-')}</td>
             <td>{payroll["work_days"]}</td>
             <td>{payroll["hospital_days"]}</td>
             <td>{payroll["vacation_days"]}</td>
@@ -2289,21 +2191,18 @@ def payroll_page() -> str:
         </tr>
         """
 
-    company_options = []
-    for company in companies:
-        selected = "selected" if company["id"] == selected_company_id else ""
-        company_options.append(
-            f'<option value="{company["id"]}" {selected}>{company["name"]}</option>'
-        )
+    client_options = []
+    for client in clients:
+        selected = "selected" if client.id == selected_client_company_id else ""
+        client_options.append(f'<option value="{client.id}" {selected}>{client.name}</option>')
 
-    company_name = get_company_name(selected_company_id) if selected_company_id else "-"
     content = f"""
     <div class="panel" style="margin-bottom:18px;">
         <div class="panel-body">
             <form method="get" class="actions" style="margin-top:0;">
                 <div>
-                    <label>회사 선택</label>
-                    <select name="company_id">{"".join(company_options)}</select>
+                    <label>거래처 선택</label>
+                    <select name="client_company_id">{"".join(client_options)}</select>
                 </div>
                 <div>
                     <label>월 선택</label>
@@ -2317,9 +2216,10 @@ def payroll_page() -> str:
     </div>
 
     <div class="cards">
-        <div class="card"><div class="label">회사</div><div class="value" style="font-size:22px;">{company_name}</div></div>
+        <div class="card"><div class="label">우리사업자</div><div class="value" style="font-size:22px;">{get_our_business_name(get_client_company(selected_client_company_id).our_business_id if get_client_company(selected_client_company_id) else None)}</div></div>
+        <div class="card"><div class="label">거래처</div><div class="value" style="font-size:22px;">{get_client_company_name(selected_client_company_id)}</div></div>
         <div class="card"><div class="label">대상 월</div><div class="value" style="font-size:22px;">{selected_month}</div></div>
-        <div class="card"><div class="label">대상 사원</div><div class="value">{len(filtered_employees)}</div></div>
+        <div class="card"><div class="label">대상 인력</div><div class="value">{len(filtered_employees)}</div></div>
         <div class="card"><div class="label">총 실지급액</div><div class="value" style="font-size:22px;">{format_won(total_final_amount)}</div></div>
     </div>
 
@@ -2329,10 +2229,6 @@ def payroll_page() -> str:
             <p>출퇴근 기록 기반 계산 결과</p>
         </div>
         <div class="panel-body">
-            <div class="actions" style="margin-top:0; margin-bottom:16px;">
-                <button class="btn btn-primary" type="button">급여 계산 실행</button>
-                <button class="btn btn-white" type="button">엑셀 다운로드</button>
-            </div>
             <table>
                 <thead>
                     <tr>
@@ -2351,15 +2247,13 @@ def payroll_page() -> str:
                         <th>실지급액</th>
                     </tr>
                 </thead>
-                <tbody>{rows or '<tr><td colspan="13">사원이 없습니다.</td></tr>'}</tbody>
+                <tbody>{rows or '<tr><td colspan="13">인력이 없습니다.</td></tr>'}</tbody>
             </table>
         </div>
     </div>
     """
     quick = [
-        {"label": "급여계산", "href": "/payroll"},
-        {"label": "급여대장", "href": "/payroll"},
-        {"label": "사원별 급여조회", "href": "/payroll"},
+        {"label": "급여관리", "href": "/payroll"},
     ]
     return render_page("급여관리", "payroll", content, quick)
 
@@ -2374,12 +2268,13 @@ def settings_page() -> str:
         </div>
         <div class="panel-body">
             <table>
-                <tr><th style="width:220px;">최고관리자</th><td>웹 사용 가능 / 앱 사용 가능 / 민감 문서 열람 가능</td></tr>
+                <tr><th style="width:220px;">저장 방식</th><td>SQLite DB 파일 저장</td></tr>
+                <tr><th>최고관리자</th><td>웹 사용 가능 / 앱 사용 가능 / 민감 문서 열람 가능</td></tr>
                 <tr><th>부관리자</th><td>앱만 사용 가능 / 출퇴근 처리 / 기록 조회</td></tr>
                 <tr><th>직원</th><td>앱 조회 중심 / 직접 출퇴근 불가</td></tr>
                 <tr><th>문서 권한</th><td>민감 문서는 최고관리자만 열람 가능</td></tr>
                 <tr><th>출퇴근 정책</th><td>직원이 아니라 관리자가 직접 처리</td></tr>
-                <tr><th>근무타입</th><td>회사별 개별 설정, 공통 고정값 사용 안 함</td></tr>
+                <tr><th>근무타입</th><td>거래처별 개별 설정, 공통 고정값 사용 안 함</td></tr>
             </table>
         </div>
     </div>
@@ -2387,5 +2282,32 @@ def settings_page() -> str:
     return render_page("설정", "settings", content)
 
 
+with app.app_context():
+    db.create_all()
+    seed_database()
+
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)
+```
+
+`requirements.txt`
+
+```txt
+Flask==3.0.3
+Flask-SQLAlchemy==3.1.1
+gunicorn==22.0.0
+SQLAlchemy==2.0.36
+```
+
+주의할 점
+
+* 이 버전은 **SQLite 파일(`instance/hr.db`)** 에 저장됩니다.
+* 로컬에서는 재시작해도 유지됩니다.
+* Render에서는 **디스크가 영구 저장이 아니라서** 재배포/재생성 시 사라질 수 있습니다.
+* Render 운영용 영구 저장은 다음 단계에서 **PostgreSQL**로 바꾸는 게 맞습니다.
+
+다음 단계
+
+**a.** Render에서도 안 사라지게 `PostgreSQL` 연결 버전으로 바꾸기
+**b.** 이 DB 구조에 맞춰 `employee_assignments` 배치 이력 테이블까지 추가하기
