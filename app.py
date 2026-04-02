@@ -1,916 +1,200 @@
 ```python
-# ----------------------------
-# 운영형 구조에 맞춘 테스트용 메모리 데이터
-# 회사 5개 추가, 사원 15명 추가
-# 아래 블록으로 기존 샘플 데이터 전체를 교체
-# ----------------------------
-companies: list[dict[str, Any]] = [
-    {
-        "id": 1,
-        "name": "그린시스템",
-        "ceo_name": "홍길동",
-        "business_number": "123-45-67890",
-        "phone": "02-1234-5678",
-        "address": "경북 경주시 예시로 101",
-        "business_type": "서비스업",
-        "business_item": "인력관리",
-        "email": "green@example.com",
-        "is_active": True,
-        "memo": "테스트 회사",
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-    {
-        "id": 2,
-        "name": "블루팩토리",
-        "ceo_name": "김대표",
-        "business_number": "234-56-78901",
-        "phone": "051-222-8899",
-        "address": "부산광역시 예시구 산업로 22",
-        "business_type": "제조업",
-        "business_item": "부품생산",
-        "email": "blue@example.com",
-        "is_active": True,
-        "memo": "",
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-    {
-        "id": 3,
-        "name": "스타물류",
-        "ceo_name": "박성호",
-        "business_number": "345-67-89012",
-        "phone": "031-555-1111",
-        "address": "경기도 화성시 물류로 77",
-        "business_type": "운수업",
-        "business_item": "물류센터",
-        "email": "star@example.com",
-        "is_active": True,
-        "memo": "주간/야간 운영",
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-    {
-        "id": 4,
-        "name": "한빛케어",
-        "ceo_name": "이선영",
-        "business_number": "456-78-90123",
-        "phone": "042-777-2020",
-        "address": "대전광역시 유성구 메디컬로 15",
-        "business_type": "서비스업",
-        "business_item": "간병지원",
-        "email": "hanbit@example.com",
-        "is_active": True,
-        "memo": "병원 파견 인력",
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-    {
-        "id": 5,
-        "name": "대성건업",
-        "ceo_name": "최대성",
-        "business_number": "567-89-01234",
-        "phone": "053-888-3030",
-        "address": "대구광역시 달서구 현장로 88",
-        "business_type": "건설업",
-        "business_item": "건설인력",
-        "email": "daesung@example.com",
-        "is_active": True,
-        "memo": "현장별 조 편성",
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-    {
-        "id": 6,
-        "name": "미래푸드",
-        "ceo_name": "정미래",
-        "business_number": "678-90-12345",
-        "phone": "032-444-6060",
-        "address": "인천광역시 남동구 식품로 9",
-        "business_type": "제조업",
-        "business_item": "식품가공",
-        "email": "miraefood@example.com",
-        "is_active": True,
-        "memo": "2교대 운영",
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-    {
-        "id": 7,
-        "name": "오션테크",
-        "ceo_name": "조현우",
-        "business_number": "789-01-23456",
-        "phone": "064-555-9090",
-        "address": "제주특별자치도 제주시 테크로 55",
-        "business_type": "제조업",
-        "business_item": "전자부품",
-        "email": "ocean@example.com",
-        "is_active": True,
-        "memo": "조별 생산라인",
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-]
+@app.route("/records")
+def records_page() -> str:
+    selected_company_raw = request.args.get("company_id", "")
+    selected_company_id = int(selected_company_raw) if selected_company_raw.isdigit() else None
+    selected_month = request.args.get("month", month_str_default())
+    selected_tab = request.args.get("tab", "all")
+    year, month = parse_month(selected_month)
 
-company_settings: list[dict[str, Any]] = [
-    {
-        "company_id": 1,
-        "attendance_open_time": "08:00",
-        "late_standard_time": "09:00",
-        "workday_standard_hours": 8,
-        "hospital_paid": True,
-        "document_view_policy": "sensitive_super_admin_only",
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-    {
-        "company_id": 2,
-        "attendance_open_time": "07:00",
-        "late_standard_time": "08:30",
-        "workday_standard_hours": 8,
-        "hospital_paid": False,
-        "document_view_policy": "sensitive_super_admin_only",
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-    {
-        "company_id": 3,
-        "attendance_open_time": "08:00",
-        "late_standard_time": "09:00",
-        "workday_standard_hours": 8,
-        "hospital_paid": True,
-        "document_view_policy": "sensitive_super_admin_only",
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-    {
-        "company_id": 4,
-        "attendance_open_time": "08:30",
-        "late_standard_time": "09:00",
-        "workday_standard_hours": 8,
-        "hospital_paid": True,
-        "document_view_policy": "sensitive_super_admin_only",
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-    {
-        "company_id": 5,
-        "attendance_open_time": "06:30",
-        "late_standard_time": "07:00",
-        "workday_standard_hours": 8,
-        "hospital_paid": False,
-        "document_view_policy": "sensitive_super_admin_only",
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-    {
-        "company_id": 6,
-        "attendance_open_time": "07:30",
-        "late_standard_time": "08:00",
-        "workday_standard_hours": 8,
-        "hospital_paid": True,
-        "document_view_policy": "sensitive_super_admin_only",
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-    {
-        "company_id": 7,
-        "attendance_open_time": "08:00",
-        "late_standard_time": "08:30",
-        "workday_standard_hours": 8,
-        "hospital_paid": False,
-        "document_view_policy": "sensitive_super_admin_only",
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-]
+    company_filter_options = ['<option value="">전체 회사</option>']
+    for company in companies:
+        selected = "selected" if selected_company_id == company["id"] else ""
+        company_filter_options.append(
+            f'<option value="{company["id"]}" {selected}>{company["name"]}</option>'
+        )
 
-company_work_types: list[dict[str, Any]] = [
-    {"id": 1, "company_id": 1, "name": "주간", "code": "DAY", "is_active": True},
-    {"id": 2, "company_id": 1, "name": "야간", "code": "NIGHT", "is_active": True},
+    subtabs = f"""
+    <div class="subtabs">
+        <a class="{'active' if selected_tab == 'all' else ''}" href="/records?tab=all&company_id={selected_company_id or ''}&month={selected_month}">전체 출퇴기록</a>
+        <a class="{'active' if selected_tab == 'monthly' else ''}" href="/records?tab=monthly&company_id={selected_company_id or ''}&month={selected_month}">월별 출석현황</a>
+    </div>
+    """
 
-    {"id": 3, "company_id": 2, "name": "1조", "code": "A", "is_active": True},
-    {"id": 4, "company_id": 2, "name": "2조", "code": "B", "is_active": True},
-    {"id": 5, "company_id": 2, "name": "3조", "code": "C", "is_active": True},
+    filter_form = f"""
+    <div class="panel" style="margin-bottom:18px;">
+        <div class="panel-body">
+            <form method="get" class="actions" style="margin-top:0;">
+                <input type="hidden" name="tab" value="{selected_tab}">
+                <div>
+                    <label>회사 필터</label>
+                    <select name="company_id">{"".join(company_filter_options)}</select>
+                </div>
+                <div>
+                    <label>월 선택</label>
+                    <input type="month" name="month" value="{selected_month}">
+                </div>
+                <div>
+                    <button class="btn btn-white" type="submit">조회</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    """
 
-    {"id": 6, "company_id": 3, "name": "주간", "code": "DAY", "is_active": True},
-    {"id": 7, "company_id": 3, "name": "야간", "code": "NIGHT", "is_active": True},
+    if selected_tab == "monthly":
+        days_in_month = monthrange(year, month)[1]
+        employees_for_grid = get_employees_by_company(selected_company_id)
 
-    {"id": 8, "company_id": 4, "name": "주간", "code": "DAY", "is_active": True},
-    {"id": 9, "company_id": 4, "name": "오후", "code": "PM", "is_active": True},
-    {"id": 10, "company_id": 4, "name": "야간", "code": "NIGHT", "is_active": True},
+        header_days = "".join(f"<th>{day}</th>" for day in range(1, days_in_month + 1))
+        month_rows = ""
 
-    {"id": 11, "company_id": 5, "name": "1조", "code": "A", "is_active": True},
-    {"id": 12, "company_id": 5, "name": "2조", "code": "B", "is_active": True},
+        for employee in employees_for_grid:
+            monthly_map = get_month_attendance_map(employee["id"], year, month)
+            present_cnt = 0
+            hospital_cnt = 0
+            absent_cnt = 0
+            vacation_cnt = 0
+            off_cnt = 0
 
-    {"id": 13, "company_id": 6, "name": "주간", "code": "DAY", "is_active": True},
-    {"id": 14, "company_id": 6, "name": "야간", "code": "NIGHT", "is_active": True},
+            month_rows += (
+                f'<tr><td class="name-col"><a href="/employees/{employee["id"]}">{employee["name"]}</a></td>'
+                f'<td class="nation-col">{employee["nationality"]}</td>'
+            )
 
-    {"id": 15, "company_id": 7, "name": "A조", "code": "A", "is_active": True},
-    {"id": 16, "company_id": 7, "name": "B조", "code": "B", "is_active": True},
-    {"id": 17, "company_id": 7, "name": "C조", "code": "C", "is_active": True},
-]
+            for day in range(1, days_in_month + 1):
+                record = monthly_map.get(day)
+                day_mark = get_day_mark(record)
+                weekday = datetime(year, month, day).weekday()
 
-company_payroll_settings: list[dict[str, Any]] = [
-    {
-        "company_id": 1,
-        "default_pay_type": "monthly",
-        "base_salary": 2200000,
-        "daily_wage": 100000,
-        "hourly_wage": 10000,
-        "night_allowance_rate": 1.5,
-        "overtime_allowance_rate": 1.5,
-        "hospital_pay_type": "paid",
-        "absence_deduction_amount": 80000,
-        "meal_allowance": 150000,
-        "transport_allowance": 100000,
-        "position_allowance": 50000,
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-    {
-        "company_id": 2,
-        "default_pay_type": "daily",
-        "base_salary": 0,
-        "daily_wage": 110000,
-        "hourly_wage": 10500,
-        "night_allowance_rate": 1.5,
-        "overtime_allowance_rate": 1.5,
-        "hospital_pay_type": "unpaid",
-        "absence_deduction_amount": 90000,
-        "meal_allowance": 120000,
-        "transport_allowance": 80000,
-        "position_allowance": 0,
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-    {
-        "company_id": 3,
-        "default_pay_type": "monthly",
-        "base_salary": 2300000,
-        "daily_wage": 105000,
-        "hourly_wage": 10200,
-        "night_allowance_rate": 1.5,
-        "overtime_allowance_rate": 1.5,
-        "hospital_pay_type": "paid",
-        "absence_deduction_amount": 85000,
-        "meal_allowance": 100000,
-        "transport_allowance": 80000,
-        "position_allowance": 30000,
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-    {
-        "company_id": 4,
-        "default_pay_type": "daily",
-        "base_salary": 0,
-        "daily_wage": 115000,
-        "hourly_wage": 10800,
-        "night_allowance_rate": 1.5,
-        "overtime_allowance_rate": 1.5,
-        "hospital_pay_type": "paid",
-        "absence_deduction_amount": 70000,
-        "meal_allowance": 90000,
-        "transport_allowance": 70000,
-        "position_allowance": 20000,
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-    {
-        "company_id": 5,
-        "default_pay_type": "daily",
-        "base_salary": 0,
-        "daily_wage": 120000,
-        "hourly_wage": 11000,
-        "night_allowance_rate": 1.5,
-        "overtime_allowance_rate": 1.5,
-        "hospital_pay_type": "unpaid",
-        "absence_deduction_amount": 95000,
-        "meal_allowance": 80000,
-        "transport_allowance": 90000,
-        "position_allowance": 0,
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-    {
-        "company_id": 6,
-        "default_pay_type": "hourly",
-        "base_salary": 0,
-        "daily_wage": 108000,
-        "hourly_wage": 10600,
-        "night_allowance_rate": 1.5,
-        "overtime_allowance_rate": 1.5,
-        "hospital_pay_type": "paid",
-        "absence_deduction_amount": 85000,
-        "meal_allowance": 70000,
-        "transport_allowance": 60000,
-        "position_allowance": 0,
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-    {
-        "company_id": 7,
-        "default_pay_type": "monthly",
-        "base_salary": 2400000,
-        "daily_wage": 115000,
-        "hourly_wage": 11200,
-        "night_allowance_rate": 1.5,
-        "overtime_allowance_rate": 1.5,
-        "hospital_pay_type": "unpaid",
-        "absence_deduction_amount": 90000,
-        "meal_allowance": 100000,
-        "transport_allowance": 70000,
-        "position_allowance": 40000,
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-]
+                if day_mark == "O":
+                    present_cnt += 1
+                    month_rows += "<td>O</td>"
+                elif day_mark == "H":
+                    hospital_cnt += 1
+                    month_rows += "<td>H</td>"
+                elif day_mark == "X":
+                    absent_cnt += 1
+                    month_rows += "<td>X</td>"
+                elif day_mark == "V":
+                    vacation_cnt += 1
+                    month_rows += "<td>V</td>"
+                else:
+                    if weekday >= 5:
+                        off_cnt += 1
+                        month_rows += "<td>-</td>"
+                    else:
+                        month_rows += "<td></td>"
 
-employees: list[dict[str, Any]] = [
-    {
-        "id": 1,
-        "company_id": 1,
-        "name": "성조",
-        "nationality": "한국",
-        "phone": "010-1111-2222",
-        "hire_date": "2026-03-01",
-        "status": "active",
-        "work_type_id": 1,
-        "pay_type": "monthly",
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-    {
-        "id": 2,
-        "company_id": 1,
-        "name": "응우옌",
-        "nationality": "베트남",
-        "phone": "010-3333-4444",
-        "hire_date": "2026-03-15",
-        "status": "active",
-        "work_type_id": 2,
-        "pay_type": "daily",
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-    {
-        "id": 3,
-        "company_id": 2,
-        "name": "알리",
-        "nationality": "우즈베키스탄",
-        "phone": "010-5555-6666",
-        "hire_date": "2026-03-20",
-        "status": "active",
-        "work_type_id": 3,
-        "pay_type": "hourly",
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-    {
-        "id": 4,
-        "company_id": 1,
-        "name": "김민수",
-        "nationality": "한국",
-        "phone": "010-7000-0004",
-        "hire_date": "2026-02-10",
-        "status": "active",
-        "work_type_id": 1,
-        "pay_type": "monthly",
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-    {
-        "id": 5,
-        "company_id": 1,
-        "name": "소피아",
-        "nationality": "필리핀",
-        "phone": "010-7000-0005",
-        "hire_date": "2026-02-14",
-        "status": "active",
-        "work_type_id": 2,
-        "pay_type": "daily",
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-    {
-        "id": 6,
-        "company_id": 2,
-        "name": "박준호",
-        "nationality": "한국",
-        "phone": "010-7000-0006",
-        "hire_date": "2026-01-08",
-        "status": "active",
-        "work_type_id": 4,
-        "pay_type": "daily",
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-    {
-        "id": 7,
-        "company_id": 2,
-        "name": "도안",
-        "nationality": "베트남",
-        "phone": "010-7000-0007",
-        "hire_date": "2026-01-21",
-        "status": "active",
-        "work_type_id": 5,
-        "pay_type": "hourly",
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-    {
-        "id": 8,
-        "company_id": 3,
-        "name": "이하늘",
-        "nationality": "한국",
-        "phone": "010-7000-0008",
-        "hire_date": "2026-02-03",
-        "status": "active",
-        "work_type_id": 6,
-        "pay_type": "monthly",
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-    {
-        "id": 9,
-        "company_id": 3,
-        "name": "마리아",
-        "nationality": "필리핀",
-        "phone": "010-7000-0009",
-        "hire_date": "2026-02-11",
-        "status": "active",
-        "work_type_id": 7,
-        "pay_type": "daily",
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-    {
-        "id": 10,
-        "company_id": 4,
-        "name": "정수빈",
-        "nationality": "한국",
-        "phone": "010-7000-0010",
-        "hire_date": "2026-01-30",
-        "status": "active",
-        "work_type_id": 8,
-        "pay_type": "daily",
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-    {
-        "id": 11,
-        "company_id": 4,
-        "name": "칼로스",
-        "nationality": "멕시코",
-        "phone": "010-7000-0011",
-        "hire_date": "2026-02-18",
-        "status": "active",
-        "work_type_id": 10,
-        "pay_type": "hourly",
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-    {
-        "id": 12,
-        "company_id": 5,
-        "name": "최현우",
-        "nationality": "한국",
-        "phone": "010-7000-0012",
-        "hire_date": "2026-01-12",
-        "status": "active",
-        "work_type_id": 11,
-        "pay_type": "daily",
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-    {
-        "id": 13,
-        "company_id": 5,
-        "name": "압둘",
-        "nationality": "우즈베키스탄",
-        "phone": "010-7000-0013",
-        "hire_date": "2026-02-20",
-        "status": "active",
-        "work_type_id": 12,
-        "pay_type": "daily",
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-    {
-        "id": 14,
-        "company_id": 6,
-        "name": "한유진",
-        "nationality": "한국",
-        "phone": "010-7000-0014",
-        "hire_date": "2026-03-04",
-        "status": "active",
-        "work_type_id": 13,
-        "pay_type": "hourly",
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-    {
-        "id": 15,
-        "company_id": 6,
-        "name": "린",
-        "nationality": "태국",
-        "phone": "010-7000-0015",
-        "hire_date": "2026-03-09",
-        "status": "active",
-        "work_type_id": 14,
-        "pay_type": "hourly",
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-    {
-        "id": 16,
-        "company_id": 7,
-        "name": "오세훈",
-        "nationality": "한국",
-        "phone": "010-7000-0016",
-        "hire_date": "2026-02-01",
-        "status": "active",
-        "work_type_id": 15,
-        "pay_type": "monthly",
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-    {
-        "id": 17,
-        "company_id": 7,
-        "name": "제이슨",
-        "nationality": "미국",
-        "phone": "010-7000-0017",
-        "hire_date": "2026-02-07",
-        "status": "active",
-        "work_type_id": 16,
-        "pay_type": "hourly",
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-    {
-        "id": 18,
-        "company_id": 7,
-        "name": "누르잔",
-        "nationality": "카자흐스탄",
-        "phone": "010-7000-0018",
-        "hire_date": "2026-02-25",
-        "status": "active",
-        "work_type_id": 17,
-        "pay_type": "daily",
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-]
+            month_rows += (
+                f"<td>{present_cnt}</td>"
+                f"<td>{hospital_cnt}</td>"
+                f"<td>{vacation_cnt}</td>"
+                f"<td>{absent_cnt}</td>"
+                f"<td>{off_cnt}</td></tr>"
+            )
 
-employee_documents: list[dict[str, Any]] = [
-    {
-        "id": 1,
-        "employee_id": 1,
-        "document_type": "id_card",
-        "file_name": "sungjo_idcard.pdf",
-        "file_path": "/uploads/sungjo_idcard.pdf",
-        "file_mime_type": "application/pdf",
-        "is_sensitive": True,
-        "uploaded_by": "super_admin",
-        "created_at": today_str(),
-    },
-    {
-        "id": 2,
-        "employee_id": 2,
-        "document_type": "passport",
-        "file_name": "nguyen_passport.jpg",
-        "file_path": "/uploads/nguyen_passport.jpg",
-        "file_mime_type": "image/jpeg",
-        "is_sensitive": True,
-        "uploaded_by": "super_admin",
-        "created_at": today_str(),
-    },
-    {
-        "id": 3,
-        "employee_id": 9,
-        "document_type": "passport",
-        "file_name": "maria_passport.pdf",
-        "file_path": "/uploads/maria_passport.pdf",
-        "file_mime_type": "application/pdf",
-        "is_sensitive": True,
-        "uploaded_by": "super_admin",
-        "created_at": today_str(),
-    },
-]
+        tab_content = f"""
+        <div class="panel">
+            <div class="panel-head">
+                <h2>월별 출석현황</h2>
+                <p>O=출근 / H=병원 / V=휴가 / X=결근 / -=휴무</p>
+            </div>
+            <div class="panel-body month-grid">
+                <table>
+                    <thead>
+                        <tr>
+                            <th class="name-col">이름</th>
+                            <th class="nation-col">국적</th>
+                            {header_days}
+                            <th>출근</th>
+                            <th>병원</th>
+                            <th>휴가</th>
+                            <th>결근</th>
+                            <th>휴무</th>
+                        </tr>
+                    </thead>
+                    <tbody>{month_rows or '<tr><td colspan="100">사원이 없습니다.</td></tr>'}</tbody>
+                </table>
+            </div>
+        </div>
+        """
+    else:
+        filtered_records = []
+        for record in attendance_records:
+            dt = parse_date(record["work_date"])
+            if dt.year != year or dt.month != month:
+                continue
+            if selected_company_id and record["company_id"] != selected_company_id:
+                continue
+            filtered_records.append(record)
 
-attendance_records: list[dict[str, Any]] = [
-    {
-        "id": 1,
-        "company_id": 1,
-        "employee_id": 1,
-        "work_date": today_str(),
-        "work_type_id": 1,
-        "status": "working",
-        "check_in_at": "08:55:00",
-        "check_out_at": "",
-        "overtime_minutes": 0,
-        "night_minutes": 0,
-        "reason": "",
-        "created_by": "admin",
-        "updated_by": "admin",
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-    {
-        "id": 2,
-        "company_id": 1,
-        "employee_id": 2,
-        "work_date": today_str(),
-        "work_type_id": 2,
-        "status": "hospital",
-        "check_in_at": "",
-        "check_out_at": "",
-        "overtime_minutes": 0,
-        "night_minutes": 0,
-        "reason": "병원 진료",
-        "created_by": "admin",
-        "updated_by": "admin",
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-    {
-        "id": 3,
-        "company_id": 2,
-        "employee_id": 3,
-        "work_date": today_str(),
-        "work_type_id": 3,
-        "status": "completed",
-        "check_in_at": "07:50:00",
-        "check_out_at": "18:10:00",
-        "overtime_minutes": 70,
-        "night_minutes": 0,
-        "reason": "",
-        "created_by": "admin",
-        "updated_by": "admin",
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-    {
-        "id": 4,
-        "company_id": 1,
-        "employee_id": 4,
-        "work_date": today_str(),
-        "work_type_id": 1,
-        "status": "completed",
-        "check_in_at": "08:47:00",
-        "check_out_at": "18:03:00",
-        "overtime_minutes": 30,
-        "night_minutes": 0,
-        "reason": "",
-        "created_by": "admin",
-        "updated_by": "admin",
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-    {
-        "id": 5,
-        "company_id": 1,
-        "employee_id": 5,
-        "work_date": today_str(),
-        "work_type_id": 2,
-        "status": "working",
-        "check_in_at": "20:05:00",
-        "check_out_at": "",
-        "overtime_minutes": 0,
-        "night_minutes": 180,
-        "reason": "",
-        "created_by": "admin",
-        "updated_by": "admin",
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-    {
-        "id": 6,
-        "company_id": 2,
-        "employee_id": 6,
-        "work_date": today_str(),
-        "work_type_id": 4,
-        "status": "working",
-        "check_in_at": "08:12:00",
-        "check_out_at": "",
-        "overtime_minutes": 0,
-        "night_minutes": 0,
-        "reason": "",
-        "created_by": "admin",
-        "updated_by": "admin",
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-    {
-        "id": 7,
-        "company_id": 2,
-        "employee_id": 7,
-        "work_date": today_str(),
-        "work_type_id": 5,
-        "status": "absent",
-        "check_in_at": "",
-        "check_out_at": "",
-        "overtime_minutes": 0,
-        "night_minutes": 0,
-        "reason": "무단 결근",
-        "created_by": "admin",
-        "updated_by": "admin",
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-    {
-        "id": 8,
-        "company_id": 3,
-        "employee_id": 8,
-        "work_date": today_str(),
-        "work_type_id": 6,
-        "status": "working",
-        "check_in_at": "08:58:00",
-        "check_out_at": "",
-        "overtime_minutes": 0,
-        "night_minutes": 0,
-        "reason": "",
-        "created_by": "admin",
-        "updated_by": "admin",
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-    {
-        "id": 9,
-        "company_id": 3,
-        "employee_id": 9,
-        "work_date": today_str(),
-        "work_type_id": 7,
-        "status": "vacation",
-        "check_in_at": "",
-        "check_out_at": "",
-        "overtime_minutes": 0,
-        "night_minutes": 0,
-        "reason": "연차",
-        "created_by": "admin",
-        "updated_by": "admin",
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-    {
-        "id": 10,
-        "company_id": 4,
-        "employee_id": 10,
-        "work_date": today_str(),
-        "work_type_id": 8,
-        "status": "completed",
-        "check_in_at": "08:32:00",
-        "check_out_at": "17:58:00",
-        "overtime_minutes": 0,
-        "night_minutes": 0,
-        "reason": "",
-        "created_by": "admin",
-        "updated_by": "admin",
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-    {
-        "id": 11,
-        "company_id": 4,
-        "employee_id": 11,
-        "work_date": today_str(),
-        "work_type_id": 10,
-        "status": "working",
-        "check_in_at": "21:01:00",
-        "check_out_at": "",
-        "overtime_minutes": 0,
-        "night_minutes": 240,
-        "reason": "",
-        "created_by": "admin",
-        "updated_by": "admin",
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-    {
-        "id": 12,
-        "company_id": 5,
-        "employee_id": 12,
-        "work_date": today_str(),
-        "work_type_id": 11,
-        "status": "working",
-        "check_in_at": "06:45:00",
-        "check_out_at": "",
-        "overtime_minutes": 0,
-        "night_minutes": 0,
-        "reason": "",
-        "created_by": "admin",
-        "updated_by": "admin",
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-    {
-        "id": 13,
-        "company_id": 5,
-        "employee_id": 13,
-        "work_date": today_str(),
-        "work_type_id": 12,
-        "status": "hospital",
-        "check_in_at": "",
-        "check_out_at": "",
-        "overtime_minutes": 0,
-        "night_minutes": 0,
-        "reason": "진료 예약",
-        "created_by": "admin",
-        "updated_by": "admin",
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-    {
-        "id": 14,
-        "company_id": 6,
-        "employee_id": 14,
-        "work_date": today_str(),
-        "work_type_id": 13,
-        "status": "completed",
-        "check_in_at": "07:28:00",
-        "check_out_at": "18:12:00",
-        "overtime_minutes": 42,
-        "night_minutes": 0,
-        "reason": "",
-        "created_by": "admin",
-        "updated_by": "admin",
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-    {
-        "id": 15,
-        "company_id": 6,
-        "employee_id": 15,
-        "work_date": today_str(),
-        "work_type_id": 14,
-        "status": "working",
-        "check_in_at": "19:55:00",
-        "check_out_at": "",
-        "overtime_minutes": 0,
-        "night_minutes": 210,
-        "reason": "",
-        "created_by": "admin",
-        "updated_by": "admin",
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-    {
-        "id": 16,
-        "company_id": 7,
-        "employee_id": 16,
-        "work_date": today_str(),
-        "work_type_id": 15,
-        "status": "working",
-        "check_in_at": "08:05:00",
-        "check_out_at": "",
-        "overtime_minutes": 0,
-        "night_minutes": 0,
-        "reason": "",
-        "created_by": "admin",
-        "updated_by": "admin",
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-    {
-        "id": 17,
-        "company_id": 7,
-        "employee_id": 17,
-        "work_date": today_str(),
-        "work_type_id": 16,
-        "status": "completed",
-        "check_in_at": "08:10:00",
-        "check_out_at": "18:20:00",
-        "overtime_minutes": 50,
-        "night_minutes": 0,
-        "reason": "",
-        "created_by": "admin",
-        "updated_by": "admin",
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-    {
-        "id": 18,
-        "company_id": 7,
-        "employee_id": 18,
-        "work_date": today_str(),
-        "work_type_id": 17,
-        "status": "before_work",
-        "check_in_at": "",
-        "check_out_at": "",
-        "overtime_minutes": 0,
-        "night_minutes": 0,
-        "reason": "",
-        "created_by": "admin",
-        "updated_by": "admin",
-        "created_at": today_str(),
-        "updated_at": today_str(),
-    },
-]
+        filtered_records.sort(
+            key=lambda item: (item["work_date"], item["employee_id"]),
+            reverse=True,
+        )
 
-payroll_runs: list[dict[str, Any]] = []
-payroll_items: list[dict[str, Any]] = []
+        record_rows = ""
+        for index, record in enumerate(filtered_records, start=1):
+            employee = get_employee(record["employee_id"])
+            if not employee:
+                continue
+
+            record_rows += f"""
+            <tr>
+                <td>{index}</td>
+                <td>{record["work_date"]}</td>
+                <td><a href="/employees/{employee["id"]}">{employee["name"]}</a></td>
+                <td>{employee["nationality"]}</td>
+                <td>{get_company_name(record["company_id"])}</td>
+                <td>{get_work_type_name(record["work_type_id"])}</td>
+                <td>{record["check_in_at"] or '-'}</td>
+                <td>{record["check_out_at"] or '-'}</td>
+                <td>{status_badge(record["status"])}</td>
+                <td>{record["reason"] or '-'}</td>
+            </tr>
+            """
+
+        tab_content = f"""
+        <div class="panel">
+            <div class="panel-head">
+                <h2>전체 출퇴기록</h2>
+                <p>{selected_month} 기준 실제 데이터 조회</p>
+            </div>
+            <div class="panel-body">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>번호</th>
+                            <th>날짜</th>
+                            <th>사원명</th>
+                            <th>국적</th>
+                            <th>회사</th>
+                            <th>근무타입</th>
+                            <th>출근</th>
+                            <th>퇴근</th>
+                            <th>상태</th>
+                            <th>사유</th>
+                        </tr>
+                    </thead>
+                    <tbody>{record_rows or '<tr><td colspan="10">기록이 없습니다.</td></tr>'}</tbody>
+                </table>
+            </div>
+        </div>
+        """
+
+    content = f"""
+    {subtabs}
+    {filter_form}
+    {tab_content}
+    """
+
+    quick = [
+        {"label": "전체 출퇴기록", "href": "/records?tab=all"},
+        {"label": "월별 출석현황", "href": "/records?tab=monthly"},
+    ]
+    return render_page("기록조회", "records", content, quick)
 ```
 
-**a.** 월별 출석현황도 이 예시 인원 기준으로 더 풍부하게 나오게 샘플 기록을 월 전체로 늘리기
-**b.** 회사별로 사원 수가 더 자연스럽게 보이도록 20~30명 규모 샘플 데이터로 확장하기
+**a.** `attendance_records` 월 샘플 데이터도 같이 만들어서 월별 출석현황을 더 자연스럽게 채우기
+**b.** 회사/사원/월 필터를 상단 고정 검색바 형태로 정리하기
