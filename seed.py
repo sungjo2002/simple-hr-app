@@ -292,10 +292,10 @@ def seed_database() -> None:
 
     current_date = today_str()
     attendances = [
-        AttendanceRecord(employee_id=employees[0].id, work_date=current_date, status="working", check_in_time="08:02:00", check_out_time=""),
-        AttendanceRecord(employee_id=employees[1].id, work_date=current_date, status="completed", check_in_time="20:58:00", check_out_time="06:12:00"),
-        AttendanceRecord(employee_id=employees[2].id, work_date=current_date, status="before_work", check_in_time="", check_out_time=""),
-        AttendanceRecord(employee_id=employees[3].id, work_date=current_date, status="hospital", check_in_time="", check_out_time=""),
+        AttendanceRecord(employee_id=employees[0].id, work_date=current_date, status='working'),
+        AttendanceRecord(employee_id=employees[1].id, work_date=current_date, status='completed'),
+        AttendanceRecord(employee_id=employees[2].id, work_date=current_date, status='before_work'),
+        AttendanceRecord(employee_id=employees[3].id, work_date=current_date, status='hospital'),
     ]
     db.session.add_all(attendances)
     db.session.commit()
