@@ -128,12 +128,11 @@ def home() -> str:
         selected = "selected" if client_company_id == client.id else ""
         client_options.append(f'<option value="{client.id}" {selected}>{escape(client.name)}</option>')
 
-    matched_employees = list(all_employees)
-    if employee_keyword:
-        lowered = employee_keyword.lower()
-        matched_employees = [employee for employee in matched_employees if lowered in employee.name.lower()]
+    matched_employees = list(filtered_employees)
     if selected_employee_id is None and matched_employees:
         selected_employee_id = matched_employees[0].id
+    elif selected_employee_id is not None and not any(employee.id == selected_employee_id for employee in matched_employees):
+        selected_employee_id = matched_employees[0].id if matched_employees else None
 
     selected_employee = get_employee(selected_employee_id) if selected_employee_id else None
     scorecard = calculate_employee_scorecard(selected_employee_id) if selected_employee_id else None
@@ -200,7 +199,7 @@ def home() -> str:
     for key, label, value, note in card_defs:
         cards_html.append(
             f"""
-            <a class="card card-link {'active' if status_filter == key else ''}" href="{_home_url(current_date, client_company_id, employee_keyword, selected_employee_id, row_limit, key)}">
+            <a class="card card-link {'active' if status_filter == key else ''}" href="{_home_url(current_date, client_company_id, employee_keyword, None, row_limit, key)}">
                 <div class="label">{label}</div>
                 <div class="value">{value}</div>
                 <div class="value-sub">{note}</div>
