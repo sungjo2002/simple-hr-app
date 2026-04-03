@@ -1,4 +1,4 @@
-from flask import Blueprint, redirect, request, url_for
+from flask import Blueprint, flash, redirect, request, url_for
 
 from models import ClientCompany
 from utils import (
@@ -28,14 +28,18 @@ def attendance_page() -> str:
     selected_client_company_id = int(selected_client_raw) if selected_client_raw.isdigit() else None
 
     if request.method == "POST":
-        update_attendance(
-            employee_id=int(request.form["employee_id"]),
-            work_date=request.form["work_date"],
-            action_type=request.form["action_type"],
-            reason=request.form.get("reason", "").strip(),
-            overtime_minutes=int(request.form.get("overtime_minutes", 0) or 0),
-            night_minutes=int(request.form.get("night_minutes", 0) or 0),
-        )
+        try:
+            update_attendance(
+                employee_id=int(request.form["employee_id"]),
+                work_date=request.form["work_date"],
+                action_type=request.form["action_type"],
+                reason=request.form.get("reason", "").strip(),
+                overtime_minutes=int(request.form.get("overtime_minutes", 0) or 0),
+                night_minutes=int(request.form.get("night_minutes", 0) or 0),
+            )
+            flash("근태 정보가 저장되었습니다.", "success")
+        except Exception:
+            flash("근태 저장 중 오류가 발생했습니다.", "error")
         return redirect(url_for("attendance.attendance_page", work_date=request.form["work_date"], client_company_id=request.form.get("client_company_id", "")))
 
     q = request.args.get("q", "").strip()

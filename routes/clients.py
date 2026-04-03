@@ -1,4 +1,4 @@
-from flask import Blueprint, redirect, request, url_for
+from flask import Blueprint, flash, redirect, request, url_for
 
 from models import ClientCompany, ClientCompanyPayrollSetting, ClientCompanySetting, ClientCompanyWorkType, Employee, db
 from utils import (
@@ -125,6 +125,7 @@ def client_company_new() -> str:
         db.session.add(ClientCompanyWorkType(client_company_id=item.id, name="주간", code="DAY", is_active=True))
         db.session.add(ClientCompanyWorkType(client_company_id=item.id, name="야간", code="NIGHT", is_active=True))
         db.session.commit()
+        flash("거래처가 등록되었습니다.", "success")
         return redirect(url_for("clients.client_companies_page"))
 
     business_options = render_our_business_options()

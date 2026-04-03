@@ -1,4 +1,4 @@
-from flask import Blueprint, redirect, request, url_for
+from flask import Blueprint, flash, redirect, request, url_for
 
 from models import ClientCompany, Employee, EmployeeDocument, db
 from utils import (
@@ -180,6 +180,7 @@ def employee_new() -> str:
         )
         db.session.add(item)
         db.session.commit()
+        flash("직원이 등록되었습니다.", "success")
         return redirect(url_for("employees.employees_page"))
 
     business_options = render_our_business_options(selected_our_business_id)
@@ -241,6 +242,7 @@ def employee_detail(employee_id: int) -> str:
         )
         db.session.add(doc)
         db.session.commit()
+        flash("문서가 등록되었습니다.", "success")
         return redirect(url_for("employees.employee_detail", employee_id=employee_id))
 
     attendance_rows = ""

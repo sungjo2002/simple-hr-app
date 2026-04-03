@@ -1,4 +1,4 @@
-from flask import Blueprint, redirect, request, url_for
+from flask import Blueprint, flash, redirect, request, url_for
 
 from models import ClientCompany, OurBusiness, db
 from utils import export_table, paginate_items, render_page, render_pagination, render_table_toolbar, sort_items, today_str
@@ -104,6 +104,7 @@ def our_business_new() -> str:
         )
         db.session.add(item)
         db.session.commit()
+        flash("사업자가 등록되었습니다.", "success")
         return redirect(url_for("businesses.our_businesses_page"))
 
     content = """

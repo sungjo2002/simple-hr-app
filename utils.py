@@ -4,7 +4,7 @@ from calendar import monthrange
 from datetime import date, datetime
 from typing import Any
 
-from flask import Response, render_template, render_template_string
+from flask import Response, render_template_string, request, url_for
 
 from models import AttendanceRecord, ClientCompany, ClientCompanyPayrollSetting, ClientCompanySetting, ClientCompanyWorkType, Employee, EmployeeDocument, OurBusiness, db
 
@@ -28,6 +28,57 @@ PAY_TYPE_LABELS = {
     "daily": "일급제",
     "hourly": "시급제",
 }
+
+
+SECTION_META = {
+    "home": {"label": "홈", "href": "/"},
+    "employees": {"label": "직원관리", "href": "/employees"},
+    "attendance": {"label": "근태관리", "href": "/attendance"},
+    "client_companies": {"label": "거래처관리", "href": "/client-companies"},
+    "our_businesses": {"label": "사업자관리", "href": "/our-businesses"},
+    "records": {"label": "기록조회", "href": "/records"},
+    "payroll": {"label": "급여관리", "href": "/payroll"},
+    "settings": {"label": "설정", "href": "/settings"},
+}
+
+
+def build_breadcrumbs(title: str, active: str) -> list[dict[str, str | bool]]:
+    section = SECTION_META.get(active)
+    breadcrumbs: list[dict[str, str | bool]] = [{"label": "홈", "href": "/", "current": active == "home"}]
+    if section and active != "home":
+        breadcrumbs.append({"label": str(section["label"]), "href": str(section["href"]), "current": title == section["label"]})
+    if not section:
+        breadcrumbs.append({"label": title, "href": "", "current": True})
+    elif title != section["label"]:
+        breadcrumbs.append({"label": title, "href": "", "current": True})
+    return breadcrumbs
+
+
+def build_page_status(title: str, active: str) -> list[str]:
+    status_items: list[str] = []
+
+    if request.args.get("q"):
+        status_items.append(f"검색: {request.args.get('q', '').strip()}")
+    if request.args.get("sort"):
+        direction_label = "오름차순" if request.args.get("direction", "asc") == "asc" else "내림차순"
+        status_items.append(f"정렬: {request.args.get('sort')} · {direction_label}")
+    if request.args.get("page"):
+        status_items.append(f"페이지: {request.args.get('page')}")
+    if request.args.get("work_date"):
+        status_items.append(f"기준일: {request.args.get('work_date')}")
+    if request.args.get("month"):
+        status_items.append(f"기준월: {request.args.get('month')}")
+    if request.args.get("client_company_id"):
+        status_items.append("거래처 필터 적용")
+    if request.args.get("export"):
+        status_items.append(f"내보내기: {request.args.get('export').upper()}")
+
+    if not status_items:
+        section = SECTION_META.get(active)
+        if section and title != section["label"]:
+            status_items.append(str(section["label"]))
+        status_items.append(f"현재 화면: {title}")
+    return status_items
 
 
 def today_str() -> str:
@@ -215,6 +266,120 @@ BASE_HTML = """
         width:min(100%,1220px);
         margin:0 auto;
         padding:clamp(14px,2vw,20px);
+    }
+
+    .page-meta {
+        display:flex;
+        flex-direction:column;
+        gap:12px;
+        margin-bottom:16px;
+    }
+    .breadcrumbs {
+        display:flex;
+        flex-wrap:wrap;
+        gap:8px;
+        align-items:center;
+        color:var(--muted);
+        font-size:13px;
+        font-weight:700;
+    }
+    .breadcrumbs a {
+        color:var(--muted);
+        text-decoration:none;
+    }
+    .breadcrumbs a:hover {
+        color:var(--primary);
+    }
+    .breadcrumb-sep {
+        color:#94a3b8;
+    }
+    .breadcrumbs .current {
+        color:var(--text);
+    }
+    .page-status {
+        display:flex;
+        flex-wrap:wrap;
+        gap:8px;
+    }
+    .status-pill {
+        display:inline-flex;
+        align-items:center;
+        gap:6px;
+        padding:8px 12px;
+        border-radius:999px;
+        background:#fff;
+        border:1px solid var(--line);
+        color:#334155;
+        font-size:12px;
+        font-weight:800;
+        box-shadow:var(--shadow-soft);
+    }
+    .toast-stack {
+        position:fixed;
+        right:18px;
+        bottom:18px;
+        z-index:60;
+        display:flex;
+        flex-direction:column;
+        gap:10px;
+        width:min(360px, calc(100vw - 32px));
+    }
+    .toast {
+        display:flex;
+        gap:10px;
+        align-items:flex-start;
+        padding:14px 16px;
+        border-radius:16px;
+        border:1px solid var(--line);
+        background:#fff;
+        box-shadow:0 18px 32px rgba(15, 23, 42, .14);
+        animation:toast-in .22s ease;
+    }
+    .toast-success { border-color:rgba(22,163,74,.22); background:#f0fdf4; }
+    .toast-error { border-color:rgba(220,38,38,.22); background:#fef2f2; }
+    .toast-info { border-color:rgba(2,132,199,.22); background:#eff6ff; }
+    .toast-icon {
+        width:24px;
+        height:24px;
+        border-radius:999px;
+        display:inline-flex;
+        align-items:center;
+        justify-content:center;
+        font-size:12px;
+        font-weight:800;
+        flex:none;
+    }
+    .toast-success .toast-icon { background:#dcfce7; color:#166534; }
+    .toast-error .toast-icon { background:#fee2e2; color:#991b1b; }
+    .toast-info .toast-icon { background:#dbeafe; color:#1d4ed8; }
+    .toast-text {
+        display:flex;
+        flex-direction:column;
+        gap:4px;
+    }
+    .toast-title {
+        font-size:13px;
+        font-weight:800;
+        color:var(--text);
+    }
+    .toast-message {
+        font-size:13px;
+        color:#475569;
+        line-height:1.45;
+    }
+    .toast-close {
+        margin-left:auto;
+        border:0;
+        background:transparent;
+        color:#64748b;
+        cursor:pointer;
+        font-size:16px;
+        line-height:1;
+        padding:0;
+    }
+    @keyframes toast-in {
+        from { opacity:0; transform:translateY(12px); }
+        to { opacity:1; transform:translateY(0); }
     }
      .cards {
         display:grid;
@@ -692,7 +857,51 @@ BASE_HTML = """
         </div>
         {% endif %}
     </div>
-    <div class="wrap">{{ content|safe }}</div>
+    <div class="wrap">
+        {% if breadcrumbs or page_status %}
+        <div class="page-meta">
+            {% if breadcrumbs %}
+            <nav class="breadcrumbs" aria-label="breadcrumb">
+                {% for item in breadcrumbs %}
+                    {% if not loop.first %}<span class="breadcrumb-sep">/</span>{% endif %}
+                    {% if item.current %}
+                        <span class="current">{{ item.label }}</span>
+                    {% else %}
+                        <a href="{{ item.href }}">{{ item.label }}</a>
+                    {% endif %}
+                {% endfor %}
+            </nav>
+            {% endif %}
+            {% if page_status %}
+            <div class="page-status">
+                {% for item in page_status %}
+                <span class="status-pill">{{ item }}</span>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+        {% endif %}
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+            <div class="toast-stack" aria-live="polite" aria-atomic="true">
+                {% for category, message in messages %}
+                <div class="toast toast-{{ category if category in ['success', 'error', 'info'] else 'info' }}" data-toast>
+                    <div class="toast-icon">
+                        {{ '완료' if category == 'success' else '오류' if category == 'error' else '안내' }}
+                    </div>
+                    <div class="toast-text">
+                        <div class="toast-title">
+                            {{ '저장 완료' if category == 'success' else '오류 발생' if category == 'error' else '안내' }}
+                        </div>
+                        <div class="toast-message">{{ message }}</div>
+                    </div>
+                    <button class="toast-close" type="button" aria-label="닫기" data-toast-close>&times;</button>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+        {% endwith %}
+        {{ content|safe }}</div>
 <script>
 (function () {
     function enableDragScroll(element) {
@@ -755,7 +964,24 @@ BASE_HTML = """
     }
 
     document.querySelectorAll(".js-drag-scroll").forEach(enableDragScroll);
+    function enableToasts() {
+        document.querySelectorAll("[data-toast]").forEach(function (toast) {
+            const closeButton = toast.querySelector("[data-toast-close]");
+            if (closeButton) {
+                closeButton.addEventListener("click", function () {
+                    toast.remove();
+                });
+            }
+            window.setTimeout(function () {
+                if (toast && toast.parentNode) {
+                    toast.remove();
+                }
+            }, 3200);
+        });
+    }
+
     enableKeepScroll();
+    enableToasts();
 })();
 </script>
 </body>
@@ -763,13 +989,22 @@ BASE_HTML = """
 """
 
 
-def render_page(title: str, active: str, content: str, quick_links: list[dict[str, str]] | None = None) -> str:
+def render_page(
+    title: str,
+    active: str,
+    content: str,
+    quick_links: list[dict[str, str]] | None = None,
+    breadcrumbs: list[dict[str, str | bool]] | None = None,
+    page_status: list[str] | None = None,
+) -> str:
     return render_template_string(
         BASE_HTML,
         title=title,
         active=active,
         content=content,
         quick_links=quick_links or [],
+        breadcrumbs=breadcrumbs or build_breadcrumbs(title, active),
+        page_status=page_status or build_page_status(title, active),
     )
 
 
