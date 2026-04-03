@@ -613,22 +613,18 @@ BASE_HTML = """
             <a href="/records" class="{{ 'active' if active=='records' else '' }}">기록조회</a>
             <a href="/settings" class="{{ 'active' if active=='settings' else '' }}">설정</a>
         </div>
-        {% if quick_links %}
+        {% if active in ['client_companies', 'our_businesses'] %}
+        <div class="quickbar">
+            <span class="section-chip">회사관리</span>
+            <a href="/our-businesses" class="{{ 'active' if active == 'our_businesses' else '' }}">사업자관리</a>
+            <a href="/client-companies" class="{{ 'active' if active == 'client_companies' else '' }}">거래처관리</a>
+        </div>
+        {% elif quick_links %}
         <div class="quickbar">
             <span class="section-chip">{{ title }}</span>
             {% for item in quick_links %}
                 <a href="{{ item.href }}" class="{{ 'active' if item.get('active') else '' }}">{{ item.label }}</a>
             {% endfor %}
-            {% if active in ['client_companies', 'our_businesses'] %}
-                <a href="/client-companies" class="{{ 'active' if request.path == '/client-companies' else '' }}">거래처관리</a>
-                <a href="/our-businesses" class="{{ 'active' if request.path == '/our-businesses' else '' }}">사업자관리</a>
-            {% endif %}
-        </div>
-        {% elif active in ['client_companies', 'our_businesses'] %}
-        <div class="quickbar">
-            <span class="section-chip">{{ title }}</span>
-            <a href="/client-companies" class="{{ 'active' if request.path == '/client-companies' else '' }}">거래처관리</a>
-            <a href="/our-businesses" class="{{ 'active' if request.path == '/our-businesses' else '' }}">사업자관리</a>
         </div>
         {% endif %}
     </div>
