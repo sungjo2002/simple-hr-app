@@ -11,7 +11,6 @@ from routes.home import home_bp
 from routes.payroll import payroll_bp
 from routes.records import records_bp
 from routes.settings import settings_bp
-from routes.admin import admin_bp
 from seed import seed_database
 
 
@@ -38,7 +37,6 @@ def create_app() -> Flask:
     app.register_blueprint(records_bp)
     app.register_blueprint(payroll_bp)
     app.register_blueprint(settings_bp)
-    app.register_blueprint(admin_bp)
 
     with app.app_context():
         db.create_all()

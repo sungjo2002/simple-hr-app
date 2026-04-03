@@ -15,7 +15,6 @@ from utils import (
     get_our_business_name,
     get_work_type_name,
     render_page,
-    ui_text,
     score_bar_class,
     status_badge,
     today_str,
@@ -193,12 +192,12 @@ def home() -> str:
     filter_title = STATUS_LABELS.get(status_filter, "전체")
 
     card_defs = [
-        ("all", ui_text("home_card_total", "전체 인력"), total, "조회 대상 전체 인원"),
-        ("before_work", ui_text("home_card_before", "출근전"), before_count, "아직 출근 처리 전"),
-        ("working", ui_text("home_card_working", "근무중"), working_count, "현재 근무 진행중"),
-        ("completed", ui_text("home_card_completed", "퇴근완료"), completed_count, "당일 근무 종료"),
-        ("hospital", ui_text("home_card_hospital", "병원"), hospital_count, "병원/진료 처리"),
-        ("absent", ui_text("home_card_absent", "결근"), absent_count, "결근 처리 인원"),
+        ("all", "전체 인력", total, "조회 대상 전체 인원"),
+        ("before_work", "출근전", before_count, "아직 출근 처리 전"),
+        ("working", "근무중", working_count, "현재 근무 진행중"),
+        ("completed", "퇴근완료", completed_count, "당일 근무 종료"),
+        ("hospital", "병원", hospital_count, "병원/진료 처리"),
+        ("absent", "결근", absent_count, "결근 처리 인원"),
     ]
     cards_html = []
     for key, label, value, note in card_defs:
@@ -241,8 +240,8 @@ def home() -> str:
     <div class="hero-panel" id="dashboard-top">
         <div class="hero-grid">
             <div>
-                <h2 class="hero-title">{ui_text("home_hero_title", "오늘 인력 운영 현황")}</h2>
-                <p class="hero-copy">{ui_text("home_hero_desc", "거래처별 인력 상황과 근태 현황을 한 번에 확인할 수 있습니다.")}</p>
+                <h2 class="hero-title">오늘의 인력 운영 상황을 한 번에 확인하세요</h2>
+                <p class="hero-copy">상태 카드를 누르면 아래 인력현황과 제목이 연결되고, 사원 검색과 거래처 필터도 같은 흐름으로 함께 동작합니다. 홈 화면 중심으로 구조를 정리해 중복 느낌을 줄이고, 업무 흐름이 바로 보이도록 레이아웃을 다듬었습니다.</p>
             </div>
             {hero_metrics}
         </div>
@@ -267,8 +266,8 @@ def home() -> str:
                 </div>
             </div>
             <div class="actions">
-                <button class="btn btn-primary" type="submit">{ui_text("home_search_button", "조회")}</button>
-                <a class="btn btn-white" href="/">{ui_text("home_reset_button", "초기화")}</a>
+                <button class="btn btn-primary" type="submit">조회 적용</button>
+                <a class="btn btn-white" href="/">전체 초기화</a>
             </div>
         </div>
     </form>
@@ -339,4 +338,4 @@ def home() -> str:
         </div>
     </div>
     """
-    return render_page(ui_text("home_page_title", "홈"), "home", content)
+    return render_page("홈", "home", content)
