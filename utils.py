@@ -6,7 +6,19 @@ from typing import Any
 
 from flask import render_template_string
 
-from models import AdminMenu, AttendanceRecord, ClientCompany, ClientCompanyPayrollSetting, ClientCompanySetting, ClientCompanyWorkType, Employee, EmployeeDocument, OurBusiness, UiLabel, db
+from models import (
+    AdminMenu,
+    AttendanceRecord,
+    ClientCompany,
+    ClientCompanyPayrollSetting,
+    ClientCompanySetting,
+    ClientCompanyWorkType,
+    Employee,
+    EmployeeDocument,
+    OurBusiness,
+    UiLabel,
+    db,
+)
 
 ATTENDANCE_STATUS = {
     "before_work": "출근전",
@@ -51,8 +63,70 @@ def month_str_default() -> str:
     return datetime.now().strftime("%Y-%m")
 
 
+def ui_text(label_key: str, default: str) -> str:
+    item = UiLabel.query.filter_by(label_key=label_key, is_active=True).first()
+    return item.label_text if item and item.label_text else default
 
-BASE_HTML = """
+
+def _public_menu_items() -> list[AdminMenu]:
+    return (
+        AdminMenu.query
+        .filter(AdminMenu.route_path.notlike("/admin%"))
+        .order_by(AdminMenu.sort_order.asc(), AdminMenu.id.asc())
+        .all()
+    )
+
+
+def build_public_navigation(active: str) -> list[dict[str, Any]]:
+    items = _public_menu_items()
+    code_map = {item.code: item for item in items}
+    children_map: dict[str, list[AdminMenu]] = {}
+    for item in items:
+        if item.parent_code:
+            children_map.setdefault(item.parent_code, []).append(item)
+
+    navigation: list[dict[str, Any]] = []
+    for item in items:
+        if item.parent_code:
+            continue
+        children = [
+            {
+                "code": child.code,
+                "label": child.name,
+                "href": child.route_path or "#",
+                "active": active == child.code,
+                "enabled": child.is_active,
+            }
+            for child in children_map.get(item.code, [])
+            if child.is_active
+        ]
+        enabled = item.is_active
+        active_here = active == item.code or any(child["active"] for child in children)
+        href = item.route_path or (children[0]["href"] if children else "#")
+        if not enabled and not children:
+            continue
+        navigation.append(
+            {
+                "code": item.code,
+                "label": item.name,
+                "href": href,
+                "active": active_here,
+                "enabled": enabled,
+                "children": children,
+            }
+        )
+    return navigation
+
+
+def build_admin_navigation(active: str) -> list[dict[str, Any]]:
+    return [
+        {"code": "admin_home", "label": ui_text("admin_nav_home", "관리자 홈"), "href": "/admin", "active": active == "admin_home"},
+        {"code": "admin_menus", "label": ui_text("admin_nav_menus", "메뉴관리"), "href": "/admin/menus", "active": active == "admin_menus"},
+        {"code": "admin_labels", "label": ui_text("admin_nav_labels", "문구관리"), "href": "/admin/labels", "active": active == "admin_labels"},
+    ]
+
+
+APP_LAYOUT_HTML = """
 <!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -156,625 +230,152 @@ BASE_HTML = """
         align-items:center;
         padding:14px 20px;
     }
-    .menu a {
+    .menu a, .quickbar a {
         text-decoration:none;
         color:#334155;
         font-weight:800;
         font-size:14px;
-        padding:9px 12px;
-        border-radius:12px;
-        border:1px solid transparent;
-        transition:color .15s ease, border-color .15s ease, background-color .15s ease, box-shadow .15s ease;
-    }
-    .menu a:hover {
-        color:var(--primary);
-        background:#f8fbff;
-        border-color:#dbeafe;
-    }
-    .menu a.active {
-        color:var(--primary);
-        background:linear-gradient(180deg,#f8fbff 0%, #eff6ff 100%);
-        border-color:#93c5fd;
-        box-shadow:0 10px 18px rgba(37,99,235,.10);
-    }
-    .quickbar {
-        gap:8px;
-        padding-top:10px;
-        padding-bottom:12px;
-        border-top:1px solid rgba(219,228,239,.7);
-    }
-    .quickbar a, .section-chip {
-        text-decoration:none;
-        color:#0f172a;
-        background:#fff;
-        border:1px solid var(--line);
+        padding:9px 14px;
         border-radius:999px;
-        padding:8px 12px;
-        font-weight:700;
-        font-size:12px;
-        box-shadow:var(--shadow-soft);
-        transition:background-color .15s ease, border-color .15s ease, color .15s ease, box-shadow .15s ease;
     }
-    .quickbar a:hover {
-        border-color:#bfdbfe;
-        background:#f8fbff;
-        color:var(--primary);
-    }
-    .quickbar a.active {
-        background:linear-gradient(180deg,#eff6ff 0%, #dbeafe 100%);
-        color:var(--primary);
-        border-color:#93c5fd;
-        box-shadow:0 10px 18px rgba(37,99,235,.10);
+    .menu a.active, .quickbar a.active {
+        background:#dbeafe;
+        color:#1d4ed8;
     }
     .section-chip {
-        background:var(--primary-soft);
-        color:var(--primary);
-        border-color:#bfdbfe;
+        display:inline-flex;
+        align-items:center;
+        padding:8px 12px;
+        border-radius:999px;
+        background:#eff6ff;
+        color:#1d4ed8;
+        font-size:13px;
+        font-weight:800;
     }
-
-.hero-card {
-    background:linear-gradient(135deg,#ffffff 0%, #f8fbff 100%);
-    border:1px solid var(--line);
-    border-radius:24px;
-    padding:24px;
-    display:flex;
-    flex-wrap:wrap;
-    gap:18px;
-    justify-content:space-between;
-    align-items:center;
-    box-shadow:var(--shadow-soft);
-    margin-bottom:20px;
-}
-.eyebrow {
-    font-size:12px;
-    font-weight:800;
-    color:var(--primary);
-    letter-spacing:.14em;
-    margin-bottom:8px;
-}
-.hero-actions {
-    display:flex;
-    flex-wrap:wrap;
-    gap:10px;
-}
-.toolbar {
-    display:flex;
-    flex-wrap:wrap;
-    gap:10px;
-    margin-bottom:14px;
-}
-.btn {
-    display:inline-flex;
-    align-items:center;
-    justify-content:center;
-    min-height:40px;
-    padding:0 14px;
-    border-radius:12px;
-    border:1px solid var(--line-strong);
-    color:var(--primary-deep);
-    text-decoration:none;
-    font-weight:700;
-    background:#fff;
-}
-.btn-primary {
-    background:var(--primary);
-    border-color:var(--primary);
-    color:#fff;
-}
-.stat-grid {
-    display:grid;
-    grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));
-    gap:14px;
-    margin-bottom:20px;
-}
-.stat-card {
-    background:#fff;
-    border:1px solid var(--line);
-    border-radius:20px;
-    padding:18px;
-    box-shadow:var(--shadow-soft);
-}
-.stat-label {
-    font-size:13px;
-    font-weight:700;
-    color:var(--muted);
-    margin-bottom:8px;
-}
-.stat-value {
-    font-size:30px;
-    font-weight:800;
-    line-height:1.05;
-    color:var(--text);
-    margin-bottom:8px;
-}
-.stat-meta {
-    font-size:13px;
-    color:var(--muted);
-}
-.two-col {
-    display:grid;
-    grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));
-    gap:16px;
-}
-.bullet-list {
-    margin:0;
-    padding-left:18px;
-    color:var(--text);
-}
-.bullet-list li {
-    margin:8px 0;
-    line-height:1.5;
-}
-
     .wrap {
-        width:min(100%,1220px);
+        width:min(100%,1280px);
         margin:0 auto;
-        padding:clamp(14px,2vw,20px);
+        padding:28px 20px 56px;
     }
-     .cards {
+    .hero-card, .panel, .stat-card {
+        border:1px solid var(--line);
+        border-radius:20px;
+        background:var(--panel);
+        box-shadow:var(--shadow-soft);
+    }
+    .hero-card {
+        display:flex;
+        justify-content:space-between;
+        gap:18px;
+        align-items:flex-start;
+        padding:24px;
+        margin-bottom:20px;
+    }
+    .hero-actions, .toolbar {
+        display:flex;
+        flex-wrap:wrap;
+        gap:10px;
+    }
+    .btn {
+        display:inline-flex;
+        align-items:center;
+        justify-content:center;
+        min-height:40px;
+        padding:0 14px;
+        border-radius:12px;
+        border:1px solid var(--line);
+        background:#fff;
+        color:#0f172a;
+        text-decoration:none;
+        font-weight:800;
+        cursor:pointer;
+    }
+    .btn-primary {
+        background:var(--primary);
+        border-color:var(--primary);
+        color:#fff;
+    }
+    .btn-danger {
+        background:#fff1f2;
+        color:#be123c;
+        border-color:#fecdd3;
+    }
+    .stat-grid {
         display:grid;
-        grid-template-columns:repeat(auto-fit,minmax(160px,1fr));
+        grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));
         gap:16px;
         margin-bottom:20px;
     }
-    .card,.panel,.side-box {
-        background:var(--panel);
-        border:1px solid var(--line);
-        border-radius:20px;
-        box-shadow:var(--shadow-soft);
-        min-width:0;
-    }
-    .card {
-        padding:16px;
-    }
-    .card-link {
-        display:block;
-        text-decoration:none;
-        color:inherit;
-        cursor:pointer;
-        transition:transform .15s ease, box-shadow .15s ease, border-color .15s ease, background-color .15s ease;
-        position:relative;
-        overflow:hidden;
-    }
-    .card-link::after {
-        content:"";
-        position:absolute;
-        inset:auto -40px -52px auto;
-        width:120px;
-        height:120px;
-        background:radial-gradient(circle, rgba(37,99,235,.13), transparent 70%);
-        pointer-events:none;
-    }
-    .card-link:hover {
-        transform:translateY(-3px);
-        border-color:#93c5fd;
-        box-shadow:0 18px 30px rgba(37,99,235,.12);
-    }
-    .card-link.active {
-        border-color:#60a5fa;
-        background:linear-gradient(180deg, #f8fbff 0%, #eff6ff 100%);
-        box-shadow:0 18px 30px rgba(37,99,235,.14);
-    }
-    .label {
-        font-size:13px;
-        color:var(--muted);
-        margin-bottom:10px;
-        font-weight:700;
-    }
-    .value {
-        font-size:30px;
-        font-weight:800;
-        letter-spacing:-0.03em;
-    }
-    .value-sub {
-        font-size:12px;
-        color:var(--muted);
-        margin-top:8px;
-    }
+    .stat-card { padding:18px; }
+    .stat-label { font-size:13px; color:var(--muted); font-weight:700; }
+    .stat-value { font-size:30px; font-weight:800; margin:6px 0; }
+    .stat-meta { color:var(--muted); font-size:13px; }
+    .panel { margin-bottom:20px; overflow:hidden; }
     .panel-head {
-        padding:16px 18px;
-        border-bottom:1px solid #e8eef5;
+        padding:20px 22px 0;
         display:flex;
         justify-content:space-between;
+        gap:12px;
         align-items:flex-start;
-        gap:12px;
-    }
-    .panel-head h2,.panel-head h3 {
-        margin:0;
-        font-size:22px;
-        line-height:1.15;
-    }
-    .panel-head p {
-        margin:7px 0 0;
-        font-size:13px;
-        color:var(--muted);
-    }
-    .panel-head-actions {
-        display:flex;
-        align-items:center;
-        gap:10px;
         flex-wrap:wrap;
-        justify-content:flex-end;
-        margin-left:auto;
     }
-    .head-control {
-        display:flex;
-        align-items:center;
-        gap:8px;
-        white-space:nowrap;
-        font-size:13px;
-        color:#475569;
-        font-weight:700;
-        background:#f8fbff;
-        border:1px solid #dbe4ee;
-        border-radius:14px;
-        padding:8px 10px;
-    }
-    .head-control select {
-        width:auto;
-        min-width:88px;
-        padding:8px 10px;
-        border-radius:10px;
-        background:#fff;
-    }
-    .head-count {
-        font-size:12px;
-        color:var(--muted);
-        white-space:nowrap;
-        font-weight:700;
-    }
-    .panel-body { padding:18px; }
-    .home-grid { display:grid; grid-template-columns:minmax(290px,340px) minmax(0,1fr); gap:16px; align-items:start; }
-    .content-grid { display:grid; grid-template-columns:minmax(0,1.3fr) minmax(300px,.8fr); gap:16px; align-items:start; }
-    .two-col { display:grid; grid-template-columns:minmax(240px,280px) minmax(0,1fr); gap:18px; }
-    .hero-panel {
-        background:linear-gradient(180deg, rgba(255,255,255,.98), rgba(248,251,255,.98));
-        border:1px solid var(--line);
-        border-radius:20px;
-        padding:18px;
-        margin-bottom:18px;
-        box-shadow:var(--shadow);
-    }
-    .hero-grid {
+    .panel-head h2, .panel-head h3 { margin:0; }
+    .panel-head p { margin:6px 0 0; color:var(--muted); }
+    .panel-body { padding:18px 22px 22px; }
+    .two-col {
         display:grid;
-        grid-template-columns:minmax(0,1.4fr) minmax(280px,.8fr);
-        gap:18px;
-        align-items:center;
+        grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));
+        gap:20px;
     }
-    .hero-title {
-        font-size:26px;
-        line-height:1.15;
-        font-weight:800;
-        margin:0;
-        letter-spacing:-0.03em;
-    }
-    .hero-copy {
-        margin:10px 0 0;
-        color:#475569;
-        font-size:13px;
-        line-height:1.6;
-        max-width:920px;
-    }
-    .hero-metrics {
-        display:grid;
-        grid-template-columns:repeat(2,minmax(0,1fr));
-        gap:12px;
-    }
-    .hero-metric {
-        padding:14px;
-        border-radius:18px;
-        background:var(--panel-soft);
-        border:1px solid #dbeafe;
-    }
-    .hero-metric-label {
-        font-size:12px;
-        color:#64748b;
-        font-weight:700;
-        margin-bottom:8px;
-    }
-    .hero-metric-value {
-        font-size:22px;
-        font-weight:800;
-        color:#0f172a;
-    }
-    .hero-metric-note {
-        font-size:12px;
-        color:#64748b;
-        margin-top:4px;
-    }
-    .form-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:14px; }
-    .actions { display:flex; gap:10px; flex-wrap:wrap; margin-top:18px; align-items:end; }
-    .subtabs { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px; }
-    .subtabs a,.subtabs span { text-decoration:none; padding:10px 14px; border-radius:12px; background:#fff; border:1px solid #d1dbe8; color:var(--text); font-size:13px; font-weight:800; box-shadow:var(--shadow-soft); }
-    .subtabs a:hover { color:var(--primary); border-color:#bfdbfe; background:#f8fbff; }
-    .subtabs .active { background:linear-gradient(180deg,#eff6ff 0%, #dbeafe 100%); color:var(--primary); border-color:#93c5fd; }
-    label { display:block; margin-bottom:6px; font-size:13px; font-weight:700; color:#374151; }
-    input,select,textarea {
-        width:100%;
-        border:1px solid var(--line-strong);
-        border-radius:12px;
-        padding:11px 12px;
-        font-size:14px;
-        background:white;
-        color:#0f172a;
-    }
-    input:focus, select:focus, textarea:focus {
-        outline:none;
-        border-color:#60a5fa;
-        box-shadow:0 0 0 4px rgba(59,130,246,.12);
-    }
-    textarea { min-height:90px; resize:vertical; }
-    .btn {
+    .eyebrow {
         display:inline-block;
-        text-decoration:none;
-        border:1px solid transparent;
-        border-radius:12px;
-        padding:11px 16px;
+        font-size:12px;
         font-weight:800;
-        cursor:pointer;
-        font-size:14px;
-        transition:transform .12s ease, box-shadow .12s ease, border-color .12s ease;
+        letter-spacing:.14em;
+        text-transform:uppercase;
+        color:#2563eb;
+        margin-bottom:10px;
     }
-    .btn:hover { transform:translateY(-1px); }
-    .btn-primary { background:var(--primary); color:white; box-shadow:0 10px 18px rgba(37,99,235,.18); }
-    .btn-primary:hover, .btn-primary:focus-visible { background:#1e40af; }
-    .btn-green { background:var(--green); color:white; }
-    .btn-green:hover, .btn-green:focus-visible { background:#15803d; }
-    .btn-white { background:white; color:var(--text); border-color:#c8d0da; }
-    .btn-white:hover, .btn-white:focus-visible { color:var(--primary); border-color:#93c5fd; background:#f8fbff; }
-    .btn:active { transform:translateY(0); }
-    .btn.is-active { background:linear-gradient(180deg,#eff6ff 0%, #dbeafe 100%); color:var(--primary); border-color:#93c5fd; }
-    .photo-box { height:220px; border:2px dashed #cbd5e1; border-radius:16px; display:flex; align-items:center; justify-content:center; background:#f8fafc; color:var(--muted); font-weight:bold; }
-    .table-scroll {
-        overflow:auto;
+    table {
         width:100%;
-        scrollbar-width:thin;
-        scrollbar-color:#94a3b8 #e2e8f0;
-        cursor:grab;
-        user-select:none;
-        -webkit-user-select:none;
-        border:1px solid #e8eef5;
-        border-radius:16px;
+        border-collapse:collapse;
         background:#fff;
     }
-    .table-scroll.is-dragging { cursor:grabbing; }
-    table { width:100%; border-collapse:collapse; table-layout:auto; min-width:780px; }
-    th,td {
-        border-top:1px solid #edf1f5;
-        padding:13px 12px;
+    th, td {
+        padding:12px 10px;
+        border-bottom:1px solid #e2e8f0;
         text-align:left;
+        vertical-align:top;
         font-size:14px;
-        vertical-align:middle;
-        white-space:nowrap;
     }
-    tr:hover td { background:#fbfdff; }
     th {
-        background:#f6f9fc;
+        background:#f8fafc;
         color:#334155;
         font-weight:800;
-        position:sticky;
-        top:0;
-        z-index:1;
     }
-    .badge { display:inline-block; padding:6px 10px; border-radius:999px; font-size:12px; font-weight:800; white-space:nowrap; }
-    .green { background:#dcfce7; color:#166534; } .blue { background:#dbeafe; color:#1d4ed8; } .yellow { background:#fef3c7; color:#92400e; } .orange { background:#ffedd5; color:#9a3412; } .sky { background:#e0f2fe; color:#0369a1; } .red { background:#fee2e2; color:#b91c1c; } .gray { background:#e5e7eb; color:#374151; }
-    .muted { color:var(--muted); font-size:13px; }
-    .notice {
-        background:linear-gradient(180deg,#f8fbff,#eff6ff);
-        color:#1e3a8a;
-        border:1px solid #bfdbfe;
-        border-radius:16px;
-        padding:14px 16px;
-        margin-bottom:16px;
+    input, select, textarea {
+        width:100%;
+        min-height:40px;
+        padding:10px 12px;
+        border-radius:12px;
+        border:1px solid var(--line-strong);
+        background:#fff;
         font-size:14px;
-        box-shadow:var(--shadow-soft);
     }
-    .score-box {
-        display:grid;
-        gap:14px;
-        min-width:0;
-        padding:18px;
-        border-radius:18px;
-        background:linear-gradient(180deg,#ffffff,#f8fbff);
-        border:1px solid #e5edf7;
-    }
-    .score-header {
-        display:flex;
-        align-items:center;
-        justify-content:space-between;
-        gap:12px;
-        padding-bottom:4px;
-        border-bottom:1px solid #e8eef5;
-    }
-    .score-title {
-        font-size:18px;
-        font-weight:800;
-        margin:0;
-    }
-    .score-chip {
-        display:inline-flex;
-        align-items:center;
-        gap:6px;
-        padding:6px 10px;
-        background:#eef6ff;
-        border:1px solid #cfe2ff;
-        border-radius:999px;
-        color:#1d4ed8;
-        font-size:12px;
-        font-weight:800;
-    }
-    .score-summary {
-        display:grid;
-        grid-template-columns:repeat(3,minmax(0,1fr));
-        gap:10px;
-    }
-    .score-summary-card {
-        padding:14px;
-        border-radius:16px;
-        background:#fff;
-        border:1px solid #e5edf7;
-    }
-    .score-summary-label {
-        font-size:12px;
-        color:#64748b;
-        font-weight:700;
-        margin-bottom:6px;
-    }
-    .score-summary-value {
-        font-size:24px;
-        font-weight:800;
-        letter-spacing:-0.03em;
-    }
-    .score-row { display:grid; grid-template-columns:92px minmax(0,1fr) 52px; gap:10px; align-items:center; }
-    .score-label { font-size:13px; font-weight:800; color:#334155; }
-    .bar-wrap { width:100%; height:20px; background:#e5e7eb; border-radius:999px; overflow:hidden; position:relative; }
-    .bar-fill { height:100%; border-radius:999px; }
-    .bar-good { background:linear-gradient(90deg,#22c55e,#16a34a); } .bar-mid { background:linear-gradient(90deg,#60a5fa,#2563eb); } .bar-warn { background:linear-gradient(90deg,#fb923c,#ea580c); }
-    .score-num { text-align:right; font-size:13px; font-weight:800; }
-    .empty-score {
-        padding:20px;
-        border-radius:18px;
-        background:#f8fafc;
-        border:1px dashed #cbd5e1;
-        color:#64748b;
-        font-weight:700;
-    }
-    .legend-list {
-        display:grid;
-        grid-template-columns:repeat(2,minmax(0,1fr));
-        gap:10px;
-        margin-top:4px;
-    }
-    .legend-item {
-        padding:12px;
-        background:#fff;
+    textarea { min-height:96px; resize:vertical; }
+    .notice {
+        margin-bottom:16px;
+        padding:14px 16px;
         border-radius:14px;
-        border:1px solid #e5edf7;
-    }
-    .legend-title {
-        font-size:12px;
-        color:#64748b;
+        background:#ecfeff;
+        border:1px solid #a5f3fc;
+        color:#155e75;
         font-weight:700;
-        margin-bottom:6px;
     }
-    .legend-value {
-        font-size:16px;
-        font-weight:800;
-    }
-    .month-grid { overflow-x:auto; }
-    .month-grid table th,.month-grid table td { text-align:center; min-width:42px; white-space:nowrap; }
-    .month-grid table th.name-col,.month-grid table td.name-col { text-align:left; min-width:110px; position:sticky; left:0; background:white; z-index:2; }
-    .month-grid table th.nation-col,.month-grid table td.nation-col { text-align:left; min-width:100px; position:sticky; left:110px; background:white; z-index:2; }
-    @media (max-width:1280px) {
-        .content-grid,.home-grid,.two-col,.hero-grid { grid-template-columns:1fr; }
-    }
-    @media (max-width:768px) {
-    
-.hero-card {
-    background:linear-gradient(135deg,#ffffff 0%, #f8fbff 100%);
-    border:1px solid var(--line);
-    border-radius:24px;
-    padding:24px;
-    display:flex;
-    flex-wrap:wrap;
-    gap:18px;
-    justify-content:space-between;
-    align-items:center;
-    box-shadow:var(--shadow-soft);
-    margin-bottom:20px;
-}
-.eyebrow {
-    font-size:12px;
-    font-weight:800;
-    color:var(--primary);
-    letter-spacing:.14em;
-    margin-bottom:8px;
-}
-.hero-actions {
-    display:flex;
-    flex-wrap:wrap;
-    gap:10px;
-}
-.toolbar {
-    display:flex;
-    flex-wrap:wrap;
-    gap:10px;
-    margin-bottom:14px;
-}
-.btn {
-    display:inline-flex;
-    align-items:center;
-    justify-content:center;
-    min-height:40px;
-    padding:0 14px;
-    border-radius:12px;
-    border:1px solid var(--line-strong);
-    color:var(--primary-deep);
-    text-decoration:none;
-    font-weight:700;
-    background:#fff;
-}
-.btn-primary {
-    background:var(--primary);
-    border-color:var(--primary);
-    color:#fff;
-}
-.stat-grid {
-    display:grid;
-    grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));
-    gap:14px;
-    margin-bottom:20px;
-}
-.stat-card {
-    background:#fff;
-    border:1px solid var(--line);
-    border-radius:20px;
-    padding:18px;
-    box-shadow:var(--shadow-soft);
-}
-.stat-label {
-    font-size:13px;
-    font-weight:700;
-    color:var(--muted);
-    margin-bottom:8px;
-}
-.stat-value {
-    font-size:30px;
-    font-weight:800;
-    line-height:1.05;
-    color:var(--text);
-    margin-bottom:8px;
-}
-.stat-meta {
-    font-size:13px;
-    color:var(--muted);
-}
-.two-col {
-    display:grid;
-    grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));
-    gap:16px;
-}
-.bullet-list {
-    margin:0;
-    padding-left:18px;
-    color:var(--text);
-}
-.bullet-list li {
-    margin:8px 0;
-    line-height:1.5;
-}
-
-    .wrap { padding:12px; }
-        .menu,.quickbar { padding:10px 12px; gap:12px; }
-        .menu a { font-size:14px; }
-        .topbar { padding:16px 14px 18px; }
-        .brand-title { font-size:24px; }
-        th,td { font-size:13px; padding:10px 8px; }
-        .score-row { grid-template-columns:76px minmax(0,1fr) 44px; }
-        .score-summary { grid-template-columns:1fr; }
-        .legend-list { grid-template-columns:1fr; }
-        .panel-head { flex-direction:column; align-items:flex-start; }
-        .panel-head-actions { width:100%; justify-content:flex-start; }
+    .muted { color:var(--muted); }
+    .indent { padding-left:24px; }
+    @media (max-width: 860px) {
+        .hero-card { flex-direction:column; }
     }
 </style>
 </head>
@@ -782,206 +383,362 @@ BASE_HTML = """
     <div class="topbar">
         <div class="topbar-inner">
             <div>
-                <div class="brand-kicker">Workforce Operations Hub</div>
-                <h1 class="brand-title">멀티사업자 인력·근태·급여 관리</h1>
-                <p class="brand-desc">현장 운영, 출퇴근, 기록 조회, 급여 흐름을 한 화면에서 연결하는 웹 기반 관리 시스템</p>
+                <div class="brand-kicker">{{ app_kicker }}</div>
+                <h1 class="brand-title">{{ brand_title }}</h1>
+                <p class="brand-desc">{{ brand_desc }}</p>
             </div>
             <div class="topbar-meta">
-                <div class="meta-pill">웹 기반 운영</div>
-                <div class="meta-pill">실시간 현황 중심</div>
-                <div class="meta-pill">다중 사업장 관리</div>
+                <div class="meta-pill">오늘 {{ today }}</div>
+                <div class="meta-pill">운영화면</div>
             </div>
         </div>
     </div>
     <div class="menu-shell">
         <div class="menu">
-            {% for item in main_menu %}
-            <a href="{{ item.href }}" class="{{ 'active' if item.active else '' }}">{{ item.name }}</a>
+            {% for item in navigation %}
+                <a href="{{ item.href }}" class="{{ 'active' if item.active else '' }}">{{ item.label }}</a>
             {% endfor %}
         </div>
         {% if quick_links %}
         <div class="quickbar">
-            {% if section_title %}<span class="section-chip">{{ section_title }}</span>{% endif %}
             {% for item in quick_links %}
-                <a href="{{ item.href }}" class="{{ 'active' if item.get('active') else '' }}">{{ item.get('label', item.get('name', '')) }}</a>
+                {% if item.get('kind') == 'chip' %}
+                    <span class="section-chip">{{ item.label }}</span>
+                {% else %}
+                    <a href="{{ item.href }}" class="{{ 'active' if item.get('active') else '' }}">{{ item.label }}</a>
+                {% endif %}
             {% endfor %}
         </div>
         {% endif %}
     </div>
     <div class="wrap">{{ content|safe }}</div>
-<script>
-(function () {
-    function enableDragScroll(element) {
-        if (!element) return;
-        let isDown = false;
-        let startX = 0;
-        let startY = 0;
-        let scrollLeft = 0;
-        let scrollTop = 0;
+</body>
+</html>
+"""
 
-        element.addEventListener("mousedown", function (event) {
-            if (event.target.closest("a, button, input, select, textarea, label")) return;
-            isDown = true;
-            element.classList.add("is-dragging");
-            startX = event.pageX - element.offsetLeft;
-            startY = event.pageY - element.offsetTop;
-            scrollLeft = element.scrollLeft;
-            scrollTop = element.scrollTop;
-        });
-
-        window.addEventListener("mouseup", function () {
-            isDown = false;
-            element.classList.remove("is-dragging");
-        });
-
-        element.addEventListener("mouseleave", function () {
-            isDown = false;
-            element.classList.remove("is-dragging");
-        });
-
-        element.addEventListener("mousemove", function (event) {
-            if (!isDown) return;
-            event.preventDefault();
-            const x = event.pageX - element.offsetLeft;
-            const y = event.pageY - element.offsetTop;
-            const walkX = x - startX;
-            const walkY = y - startY;
-            element.scrollLeft = scrollLeft - walkX;
-            element.scrollTop = scrollTop - walkY;
-        });
+ADMIN_LAYOUT_HTML = """
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ title }}</title>
+<style>
+    :root {
+        --bg:#0f172a;
+        --panel:#111c34;
+        --panel-soft:#182645;
+        --line:#223251;
+        --text:#e5eefc;
+        --muted:#94a3b8;
+        --primary:#38bdf8;
+        --accent:#8b5cf6;
+        --success:#22c55e;
+        --danger:#fb7185;
+        --shadow:0 22px 48px rgba(2, 6, 23, .35);
     }
-
-    function enableKeepScroll() {
-        const key = "simple-hr-scroll-y";
-        document.querySelectorAll(".js-keep-scroll").forEach(function (element) {
-            element.addEventListener("click", function () {
-                try {
-                    sessionStorage.setItem(key, String(window.scrollY));
-                } catch (error) {}
-            });
-        });
-
-        try {
-            const saved = sessionStorage.getItem(key);
-            if (saved !== null) {
-                window.scrollTo(0, Number(saved));
-                sessionStorage.removeItem(key);
-            }
-        } catch (error) {}
+    * { box-sizing:border-box; }
+    body {
+        margin:0;
+        font-family:Arial,sans-serif;
+        color:var(--text);
+        background:
+            radial-gradient(circle at top left, rgba(56,189,248,.12), transparent 24%),
+            radial-gradient(circle at top right, rgba(139,92,246,.12), transparent 22%),
+            linear-gradient(180deg, #09111f 0%, #0f172a 100%);
     }
-
-    document.querySelectorAll(".js-drag-scroll").forEach(enableDragScroll);
-    enableKeepScroll();
-})();
-</script>
+    .admin-shell {
+        min-height:100vh;
+        display:grid;
+        grid-template-columns:280px 1fr;
+    }
+    .admin-sidebar {
+        padding:24px 18px;
+        border-right:1px solid rgba(148,163,184,.16);
+        background:rgba(9,17,31,.88);
+        position:sticky;
+        top:0;
+        height:100vh;
+    }
+    .admin-brand {
+        padding:18px;
+        border-radius:24px;
+        background:linear-gradient(160deg, rgba(56,189,248,.18), rgba(139,92,246,.18));
+        border:1px solid rgba(148,163,184,.18);
+        box-shadow:var(--shadow);
+        margin-bottom:18px;
+    }
+    .admin-brand small {
+        display:block;
+        color:#7dd3fc;
+        font-size:12px;
+        letter-spacing:.16em;
+        text-transform:uppercase;
+        font-weight:800;
+        margin-bottom:8px;
+    }
+    .admin-brand h1 {
+        margin:0 0 8px;
+        font-size:28px;
+        line-height:1.2;
+    }
+    .admin-brand p {
+        margin:0;
+        color:#cbd5e1;
+        font-size:14px;
+    }
+    .admin-nav {
+        display:flex;
+        flex-direction:column;
+        gap:10px;
+        margin-top:18px;
+    }
+    .admin-nav a, .back-link {
+        text-decoration:none;
+        color:#dbeafe;
+        background:rgba(30,41,59,.85);
+        border:1px solid rgba(148,163,184,.14);
+        padding:13px 14px;
+        border-radius:16px;
+        font-weight:800;
+    }
+    .admin-nav a.active {
+        background:linear-gradient(135deg, rgba(56,189,248,.18), rgba(99,102,241,.28));
+        border-color:rgba(56,189,248,.35);
+        color:#f8fafc;
+    }
+    .back-link {
+        display:block;
+        margin-top:18px;
+        text-align:center;
+        color:#cbd5e1;
+    }
+    .admin-main {
+        padding:24px;
+    }
+    .admin-topbar {
+        display:flex;
+        justify-content:space-between;
+        gap:16px;
+        align-items:flex-start;
+        margin-bottom:20px;
+        padding:18px 22px;
+        border-radius:24px;
+        background:rgba(17,28,52,.82);
+        border:1px solid rgba(148,163,184,.14);
+        box-shadow:var(--shadow);
+    }
+    .admin-topbar h2 { margin:0 0 6px; font-size:30px; }
+    .admin-topbar p { margin:0; color:#cbd5e1; }
+    .admin-badge {
+        display:inline-flex;
+        align-items:center;
+        height:40px;
+        padding:0 14px;
+        border-radius:999px;
+        background:rgba(56,189,248,.14);
+        color:#7dd3fc;
+        border:1px solid rgba(56,189,248,.24);
+        font-weight:800;
+        white-space:nowrap;
+    }
+    .hero-card, .panel, .stat-card {
+        border:1px solid rgba(148,163,184,.12);
+        border-radius:22px;
+        background:rgba(17,28,52,.88);
+        box-shadow:var(--shadow);
+    }
+    .hero-card {
+        display:flex;
+        justify-content:space-between;
+        gap:18px;
+        align-items:flex-start;
+        padding:24px;
+        margin-bottom:20px;
+    }
+    .hero-actions, .toolbar, .form-grid {
+        display:flex;
+        flex-wrap:wrap;
+        gap:10px;
+    }
+    .btn {
+        display:inline-flex;
+        align-items:center;
+        justify-content:center;
+        min-height:40px;
+        padding:0 14px;
+        border-radius:14px;
+        border:1px solid rgba(148,163,184,.18);
+        background:#16233e;
+        color:#f8fafc;
+        text-decoration:none;
+        font-weight:800;
+        cursor:pointer;
+    }
+    .btn-primary {
+        background:linear-gradient(135deg,#0284c7,#6366f1);
+        border-color:transparent;
+    }
+    .btn-subtle {
+        background:rgba(30,41,59,.9);
+    }
+    .stat-grid {
+        display:grid;
+        grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));
+        gap:16px;
+        margin-bottom:20px;
+    }
+    .stat-card { padding:18px; }
+    .stat-label { font-size:13px; color:#94a3b8; font-weight:700; }
+    .stat-value { font-size:30px; font-weight:800; margin:6px 0; }
+    .stat-meta { color:#cbd5e1; font-size:13px; }
+    .panel { margin-bottom:20px; overflow:hidden; }
+    .panel-head {
+        padding:20px 22px 0;
+        display:flex;
+        justify-content:space-between;
+        gap:12px;
+        align-items:flex-start;
+        flex-wrap:wrap;
+    }
+    .panel-head h3, .panel-head h2 { margin:0; }
+    .panel-head p { margin:6px 0 0; color:#cbd5e1; }
+    .panel-body { padding:18px 22px 22px; }
+    .two-col {
+        display:grid;
+        grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));
+        gap:20px;
+    }
+    .eyebrow {
+        display:inline-block;
+        font-size:12px;
+        font-weight:800;
+        letter-spacing:.16em;
+        text-transform:uppercase;
+        color:#7dd3fc;
+        margin-bottom:10px;
+    }
+    table {
+        width:100%;
+        border-collapse:collapse;
+        background:transparent;
+    }
+    th, td {
+        padding:12px 10px;
+        border-bottom:1px solid rgba(148,163,184,.12);
+        text-align:left;
+        vertical-align:top;
+        font-size:14px;
+    }
+    th {
+        background:rgba(15,23,42,.6);
+        color:#cbd5e1;
+        font-weight:800;
+    }
+    input, select, textarea {
+        width:100%;
+        min-height:40px;
+        padding:10px 12px;
+        border-radius:12px;
+        border:1px solid rgba(148,163,184,.22);
+        background:#0f172a;
+        color:#f8fafc;
+        font-size:14px;
+    }
+    textarea { min-height:96px; resize:vertical; }
+    .notice {
+        margin-bottom:16px;
+        padding:14px 16px;
+        border-radius:14px;
+        background:rgba(34,197,94,.14);
+        border:1px solid rgba(34,197,94,.30);
+        color:#dcfce7;
+        font-weight:700;
+    }
+    .muted { color:#94a3b8; }
+    .indent { padding-left:24px; }
+    .stack { display:grid; gap:16px; }
+    .chip {
+        display:inline-flex;
+        align-items:center;
+        min-height:28px;
+        padding:0 10px;
+        border-radius:999px;
+        font-size:12px;
+        font-weight:800;
+        background:rgba(56,189,248,.14);
+        color:#7dd3fc;
+    }
+    @media (max-width: 980px) {
+        .admin-shell { grid-template-columns:1fr; }
+        .admin-sidebar { position:static; height:auto; border-right:0; border-bottom:1px solid rgba(148,163,184,.16); }
+        .admin-topbar, .hero-card { flex-direction:column; }
+    }
+</style>
+</head>
+<body>
+    <div class="admin-shell">
+        <aside class="admin-sidebar">
+            <div class="admin-brand">
+                <small>{{ admin_kicker }}</small>
+                <h1>{{ admin_brand }}</h1>
+                <p>{{ admin_desc }}</p>
+            </div>
+            <nav class="admin-nav">
+                {% for item in navigation %}
+                    <a href="{{ item.href }}" class="{{ 'active' if item.active else '' }}">{{ item.label }}</a>
+                {% endfor %}
+            </nav>
+            <a class="back-link" href="/">{{ back_to_service }}</a>
+        </aside>
+        <main class="admin-main">
+            <div class="admin-topbar">
+                <div>
+                    <h2>{{ title }}</h2>
+                    <p>{{ page_description }}</p>
+                </div>
+                <div class="admin-badge">관리자 전용 섹션</div>
+            </div>
+            {{ content|safe }}
+        </main>
+    </div>
 </body>
 </html>
 """
 
 
-
-
-def ui_text(label_key: str, default: str) -> str:
-    item = UiLabel.query.filter_by(label_key=label_key, is_active=True).first()
-    if item and item.label_text.strip():
-        return item.label_text.strip()
-    return default
-
-
-def _fallback_navigation(active: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]], str]:
-    roots = [
-        {"code": "home", "name": "홈", "href": "/"},
-        {"code": "employees", "name": "직원관리", "href": "/employees"},
-        {"code": "attendance", "name": "근태관리", "href": "/attendance"},
-        {"code": "company", "name": "회사관리", "href": "/client-companies"},
-        {"code": "payroll", "name": "급여관리", "href": "/payroll"},
-        {"code": "records", "name": "기록조회", "href": "/records"},
-        {"code": "settings", "name": "설정", "href": "/settings"},
-        {"code": "admin", "name": "관리자", "href": "/admin"},
-    ]
-    children_map = {
-        "company": [
-            {"code": "our_businesses", "name": "사업자관리", "href": "/our-businesses"},
-            {"code": "client_companies", "name": "거래처관리", "href": "/client-companies"},
-        ],
-        "admin": [
-            {"code": "admin_home", "name": "관리자 홈", "href": "/admin"},
-            {"code": "admin_menus", "name": "메뉴관리", "href": "/admin/menus"},
-            {"code": "admin_labels", "name": "문구관리", "href": "/admin/labels"},
-        ],
-    }
-    parent_map = {"our_businesses": "company", "client_companies": "company", "admin_home": "admin", "admin_menus": "admin", "admin_labels": "admin"}
-    active_root = parent_map.get(active, active)
-    main_menu = [{**item, "active": item["code"] == active_root} for item in roots]
-    sub_menu = [{**item, "active": item["code"] == active} for item in children_map.get(active_root, [])]
-    section_title = next((item["name"] for item in roots if item["code"] == active_root), "")
-    return main_menu, sub_menu, section_title
-
-
-def get_navigation(active: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]], str]:
-    items = AdminMenu.query.order_by(AdminMenu.sort_order.asc(), AdminMenu.id.asc()).all()
-    if not items:
-        return _fallback_navigation(active)
-
-    code_map = {item.code: item for item in items}
-    child_map: dict[str, list[AdminMenu]] = {}
-    for item in items:
-        parent_key = item.parent_code or ""
-        child_map.setdefault(parent_key, []).append(item)
-
-    current = code_map.get(active)
-    active_root_code = active
-    visited: set[str] = set()
-    while current and current.parent_code and current.parent_code in code_map and current.parent_code not in visited:
-        visited.add(current.code)
-        active_root_code = current.parent_code
-        current = code_map.get(current.parent_code)
-
-    main_menu = []
-    for item in child_map.get("", []):
-        if not item.is_active:
-            continue
-        main_menu.append(
-            {
-                "code": item.code,
-                "name": item.name,
-                "href": item.route_path or "#",
-                "active": item.code == active_root_code,
-            }
+def render_page(
+    title: str,
+    active: str,
+    content: str,
+    quick_links: list[dict[str, str]] | None = None,
+    layout: str = "app",
+    page_description: str = "",
+) -> str:
+    if layout == "admin":
+        return render_template_string(
+            ADMIN_LAYOUT_HTML,
+            title=title,
+            content=content,
+            navigation=build_admin_navigation(active),
+            page_description=page_description or ui_text("admin_page_description", "관리자 전용 설정 화면입니다."),
+            admin_brand=ui_text("admin_brand_name", "멀티사업자 관리자"),
+            admin_kicker=ui_text("admin_brand_kicker", "admin center"),
+            admin_desc=ui_text("admin_brand_desc", "사용자 화면과 분리된 설정 전용 관리 영역입니다."),
+            back_to_service=ui_text("admin_back_to_service", "운영 화면으로 돌아가기"),
         )
 
-    sub_menu = []
-    for item in child_map.get(active_root_code, []):
-        if not item.is_active:
-            continue
-        sub_menu.append(
-            {
-                "code": item.code,
-                "name": item.name,
-                "href": item.route_path or "#",
-                "active": item.code == active,
-            }
-        )
-
-    section_title = code_map.get(active_root_code).name if active_root_code in code_map else ""
-    if not main_menu:
-        return _fallback_navigation(active)
-    return main_menu, sub_menu, section_title
-
-
-
-def render_page(title: str, active: str, content: str, quick_links: list[dict[str, str]] | None = None) -> str:
-    main_menu, sub_menu, section_title = get_navigation(active)
-    if quick_links:
-        sub_menu = quick_links
     return render_template_string(
-        BASE_HTML,
+        APP_LAYOUT_HTML,
         title=title,
         active=active,
         content=content,
-        quick_links=sub_menu,
-        main_menu=main_menu,
-        section_title=section_title,
+        navigation=build_public_navigation(active),
+        quick_links=quick_links or [],
+        app_kicker=ui_text("app_brand_kicker", "multi business hr"),
+        brand_title=ui_text("app_brand_name", "멀티사업자 인력·근태·급여 관리"),
+        brand_desc=ui_text("app_brand_desc", "인력, 근태, 급여를 한 화면 흐름으로 관리하는 운영 서비스입니다."),
+        today=today_str(),
     )
 
 

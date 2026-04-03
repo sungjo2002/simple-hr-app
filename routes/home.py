@@ -15,10 +15,10 @@ from utils import (
     get_our_business_name,
     get_work_type_name,
     render_page,
+    ui_text,
     score_bar_class,
     status_badge,
     today_str,
-    ui_text,
 )
 
 home_bp = Blueprint("home", __name__)
@@ -193,8 +193,8 @@ def home() -> str:
     filter_title = STATUS_LABELS.get(status_filter, "전체")
 
     card_defs = [
-        ("all", ui_text("home_card_total", "전체"), total, "조회 대상 전체 인원"),
-        ("before_work", ui_text("home_card_before_work", "출근전"), before_count, "아직 출근 처리 전"),
+        ("all", ui_text("home_card_total", "전체 인력"), total, "조회 대상 전체 인원"),
+        ("before_work", ui_text("home_card_before", "출근전"), before_count, "아직 출근 처리 전"),
         ("working", ui_text("home_card_working", "근무중"), working_count, "현재 근무 진행중"),
         ("completed", ui_text("home_card_completed", "퇴근완료"), completed_count, "당일 근무 종료"),
         ("hospital", ui_text("home_card_hospital", "병원"), hospital_count, "병원/진료 처리"),
@@ -241,14 +241,14 @@ def home() -> str:
     <div class="hero-panel" id="dashboard-top">
         <div class="hero-grid">
             <div>
-                <h2 class="hero-title">{escape(ui_text("home_hero_title", "오늘의 인력 운영 상황을 한 번에 확인하세요"))}</h2>
-                <p class="hero-copy">{escape(ui_text("home_hero_description", "상태 카드와 검색, 거래처 필터를 한 흐름으로 확인할 수 있습니다."))}</p>
+                <h2 class="hero-title">{ui_text("home_hero_title", "오늘 인력 운영 현황")}</h2>
+                <p class="hero-copy">{ui_text("home_hero_desc", "거래처별 인력 상황과 근태 현황을 한 번에 확인할 수 있습니다.")}</p>
             </div>
             {hero_metrics}
         </div>
     </div>
 
-    <div class="notice">{escape(ui_text("home_notice_text", "홈 화면은 요약 중심으로, 근태·직원·기록 기능은 상단 메뉴에서 분리해 중복 느낌을 줄였습니다."))}</div>
+    <div class="notice">홈 화면은 요약 중심으로, 근태·직원·기록 기능은 상단 메뉴에서 분리해 중복 느낌을 줄였습니다. 숫자 카드를 누르면 아래 인력현황으로 연결되고, 표 영역은 마우스로 드래그해 가로·세로 스크롤할 수 있습니다.</div>
 
     <form method="get" class="panel" style="margin-bottom:18px;">
         <div class="panel-body">
@@ -267,8 +267,8 @@ def home() -> str:
                 </div>
             </div>
             <div class="actions">
-                <button class="btn btn-primary" type="submit">{escape(ui_text("home_filter_apply_button", "조회 적용"))}</button>
-                <a class="btn btn-white" href="/">{escape(ui_text("home_filter_reset_button", "전체 초기화"))}</a>
+                <button class="btn btn-primary" type="submit">{ui_text("home_search_button", "조회")}</button>
+                <a class="btn btn-white" href="/">{ui_text("home_reset_button", "초기화")}</a>
             </div>
         </div>
     </form>
@@ -280,7 +280,7 @@ def home() -> str:
     <div class="home-grid">
         <div>
             <div class="panel" style="margin-bottom:18px;">
-                <div class="panel-head"><div><h2>{escape(ui_text("home_search_panel_title", "사원검색"))}</h2><p>{escape(ui_text("home_search_panel_description", "이름 검색과 상세 선택 흐름을 간단하게 유지합니다."))}</p></div></div>
+                <div class="panel-head"><div><h2>사원검색</h2><p>이름 검색과 상세 선택을 분리해도 흐름이 끊기지 않도록 정리했습니다.</p></div></div>
                 <div class="panel-body">
                     <form method="get">
                         <input type="hidden" name="work_date" value="{current_date}">
