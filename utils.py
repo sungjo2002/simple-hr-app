@@ -582,7 +582,7 @@ BASE_HTML = """
         <div class="menu">
             <a href="/" class="{{ 'active' if active=='home' else '' }}">대시보드</a>
             <a href="/employees" class="{{ 'active' if active=='employees' else '' }}">인력관리</a>
-            <a href="/attendance" class="{{ 'active' if active=='attendance' else '' }}">출퇴근관리</a>
+            <a href="/attendance" class="{{ 'active' if active=='attendance' else '' }}">근태관리</a>
             <a href="/client-companies" class="{{ 'active' if active in ['client_companies', 'our_businesses'] else '' }}">거래처·사업장</a>
             <a href="/payroll" class="{{ 'active' if active=='payroll' else '' }}">급여관리</a>
             <a href="/records" class="{{ 'active' if active=='records' else '' }}">기록조회</a>
@@ -650,7 +650,27 @@ BASE_HTML = """
         });
     }
 
+    function enableKeepScroll() {
+        const key = "simple-hr-scroll-y";
+        document.querySelectorAll(".js-keep-scroll").forEach(function (element) {
+            element.addEventListener("click", function () {
+                try {
+                    sessionStorage.setItem(key, String(window.scrollY));
+                } catch (error) {}
+            });
+        });
+
+        try {
+            const saved = sessionStorage.getItem(key);
+            if (saved !== null) {
+                window.scrollTo(0, Number(saved));
+                sessionStorage.removeItem(key);
+            }
+        } catch (error) {}
+    }
+
     document.querySelectorAll(".js-drag-scroll").forEach(enableDragScroll);
+    enableKeepScroll();
 })();
 </script>
 </body>

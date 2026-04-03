@@ -91,10 +91,11 @@ def home() -> str:
         lowered = employee_keyword.lower()
         filtered_employees = [employee for employee in filtered_employees if lowered in employee.name.lower()]
 
+    selected_employee = None
     if selected_employee_id:
-        selected_employee = get_employee(selected_employee_id)
-        if selected_employee and (client_company_id is None or selected_employee.current_client_company_id == client_company_id):
-            filtered_employees = [selected_employee]
+        candidate = get_employee(selected_employee_id)
+        if candidate and (client_company_id is None or candidate.current_client_company_id == client_company_id):
+            selected_employee = candidate
 
     visible_employees = filtered_employees[:row_limit]
 
@@ -112,7 +113,7 @@ def home() -> str:
         rows += f"""
         <tr{row_style}>
             <td>{employee.id}</td>
-            <td><a href="{detail_href}">{escape(employee.name)}</a></td>
+            <td><a class="js-keep-scroll" href="{detail_href}#worker-section">{escape(employee.name)}</a></td>
             <td>{escape(employee.nationality or "-")}</td>
             <td>{escape(get_our_business_name(employee.our_business_id))}</td>
             <td>{escape(get_client_company_name(employee.current_client_company_id))}</td>
@@ -129,12 +130,15 @@ def home() -> str:
         client_options.append(f'<option value="{client.id}" {selected}>{escape(client.name)}</option>')
 
     matched_employees = list(filtered_employees)
-    if selected_employee_id is None and matched_employees:
-        selected_employee_id = matched_employees[0].id
-    elif selected_employee_id is not None and not any(employee.id == selected_employee_id for employee in matched_employees):
-        selected_employee_id = matched_employees[0].id if matched_employees else None
+    if selected_employee is None and matched_employees:
+        selected_employee = matched_employees[0]
+        selected_employee_id = selected_employee.id
+    elif selected_employee is not None and not any(employee.id == selected_employee.id for employee in matched_employees):
+        selected_employee = matched_employees[0] if matched_employees else None
+        selected_employee_id = selected_employee.id if selected_employee else None
+    else:
+        selected_employee_id = selected_employee.id if selected_employee else None
 
-    selected_employee = get_employee(selected_employee_id) if selected_employee_id else None
     scorecard = calculate_employee_scorecard(selected_employee_id) if selected_employee_id else None
 
     score_html = '<div class="empty-score">왼쪽에서 사원을 검색하거나 표의 이름을 누르면 인력 지표가 이곳에 표시됩니다.</div>'
@@ -199,7 +203,7 @@ def home() -> str:
     for key, label, value, note in card_defs:
         cards_html.append(
             f"""
-            <a class="card card-link {'active' if status_filter == key else ''}" href="{_home_url(current_date, client_company_id, employee_keyword, None, row_limit, key)}">
+            <a class="card card-link js-keep-scroll {'active' if status_filter == key else ''}" href="{_home_url(current_date, client_company_id, employee_keyword, None, row_limit, key)}#worker-section">
                 <div class="label">{label}</div>
                 <div class="value">{value}</div>
                 <div class="value-sub">{note}</div>
@@ -233,7 +237,7 @@ def home() -> str:
     """
 
     content = f"""
-    <div class="hero-panel">
+    <div class="hero-panel" id="dashboard-top">
         <div class="hero-grid">
             <div>
                 <h2 class="hero-title">오늘의 인력 운영 상황을 한 번에 확인하세요</h2>
@@ -243,7 +247,7 @@ def home() -> str:
         </div>
     </div>
 
-    <div class="notice">상단 메뉴는 추천 구조에 맞춰 재편했습니다. 숫자 카드를 누르면 같은 화면 안에서 해당 상태 인력현황으로 연결되고, 표 영역은 마우스로 드래그해 가로·세로 스크롤할 수 있습니다.</div>
+    <div class="notice">대시보드는 요약 중심으로, 근태·인력·기록 기능은 상단 메뉴에서 분리해 중복 느낌을 줄였습니다. 숫자 카드를 누르면 아래 인력현황으로 연결되고, 표 영역은 마우스로 드래그해 가로·세로 스크롤할 수 있습니다.</div>
 
     <form method="get" class="panel" style="margin-bottom:18px;">
         <div class="panel-body">
@@ -275,7 +279,7 @@ def home() -> str:
     <div class="home-grid">
         <div>
             <div class="panel" style="margin-bottom:18px;">
-                <div class="panel-head"><div><h2>사원검색</h2><p>이름 검색과 상세 선택을 한 번에 처리</p></div></div>
+                <div class="panel-head"><div><h2>사원검색</h2><p>이름 검색과 상세 선택을 분리해도 흐름이 끊기지 않도록 정리했습니다.</p></div></div>
                 <div class="panel-body">
                     <form method="get">
                         <input type="hidden" name="work_date" value="{current_date}">
