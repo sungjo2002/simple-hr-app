@@ -817,6 +817,15 @@ BASE_HTML = """
         font-weight:700;
     }
 
+
+.drilldown-panel{margin-top:18px;padding-top:16px;border-top:1px solid #e5e7eb;}
+.drilldown-title{font-size:14px;font-weight:800;color:#0f172a;margin-bottom:8px;}
+.drilldown-actions{display:flex;flex-wrap:wrap;gap:8px;}
+.drilldown-hint{margin-top:8px;font-size:12px;color:#64748b;}
+.drilldown-summary-row{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;}
+.drill-actions-cell{white-space:nowrap;}
+.table-mini-link{display:inline-flex;align-items:center;justify-content:center;padding:6px 10px;border-radius:999px;border:1px solid #dbe4f0;background:#fff;color:#1d4ed8;font-size:12px;font-weight:700;margin-right:6px;text-decoration:none;}
+.table-mini-link:hover{background:#eff6ff;border-color:#bfdbfe;}
 </style>
 </head>
 <body>

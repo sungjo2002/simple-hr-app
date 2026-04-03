@@ -51,6 +51,27 @@ def _home_url(
     return f"/?{urlencode(query)}"
 
 
+def _records_url(tab: str, current_date: str, client_company_id: int | None, employee_name: str = "") -> str:
+    query = {
+        "tab": tab,
+        "month": current_date[:7],
+        "client_company_id": client_company_id or "",
+        "q": employee_name,
+        "page": 1,
+    }
+    return f"/records?{urlencode(query)}"
+
+
+def _payroll_url(current_date: str, client_company_id: int | None, employee_name: str = "") -> str:
+    query = {
+        "month": current_date[:7],
+        "client_company_id": client_company_id or "",
+        "q": employee_name,
+        "page": 1,
+    }
+    return f"/payroll?{urlencode(query)}"
+
+
 @home_bp.route("/")
 def home() -> str:
     current_date = request.args.get("work_date", today_str())
@@ -183,6 +204,16 @@ def home() -> str:
                     <div class="legend-value">{escape(get_work_type_name(selected_employee.work_type_id))}</div>
                 </div>
             </div>
+            <div class="drilldown-panel">
+                <div class="drilldown-title">상세 바로가기</div>
+                <div class="drilldown-actions">
+                    <a class="btn btn-white" href="{detail_records_href}">상세 기록 보기</a>
+                    <a class="btn btn-white" href="{monthly_records_href}">월별 현황 보기</a>
+                    <a class="btn btn-primary" href="{payroll_detail_href}">급여 보기</a>
+                    <a class="btn btn-white" href="/employees/{selected_employee.id}">사원 정보</a>
+                </div>
+                <div class="drilldown-hint">선택된 인력 이름과 거래처, 기준월을 반영해 바로 이동합니다.</div>
+            </div>
         </div>
         """
 
@@ -276,6 +307,22 @@ def home() -> str:
         {"".join(cards_html)}
     </div>
 
+    <div class="drilldown-summary panel" style="margin-bottom:18px;">
+        <div class="panel-body">
+            <div class="drilldown-summary-row">
+                <div>
+                    <div class="drilldown-title">요약에서 상세로 바로 이동</div>
+                    <div class="drilldown-hint">홈 화면의 카드와 인력지표 다음 단계로, 근태 상세기록과 급여대장으로 이어지도록 연결을 강화했습니다.</div>
+                </div>
+                <div class="drilldown-actions">
+                    <a class="btn btn-white" href="{_records_url("all", current_date, client_company_id, employee_keyword)}">전체 기록 보기</a>
+                    <a class="btn btn-white" href="{_records_url("monthly", current_date, client_company_id, employee_keyword)}">월별 현황 보기</a>
+                    <a class="btn btn-primary" href="{_payroll_url(current_date, client_company_id, employee_keyword)}">급여대장 보기</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="home-grid">
         <div>
             <div class="panel" style="margin-bottom:18px;">
@@ -329,7 +376,7 @@ def home() -> str:
             <div class="panel-body">
                 <div class="table-scroll js-drag-scroll" style="max-height:{table_max_height}px;">
                     <table>
-                        <thead><tr><th>번호</th><th>이름</th><th>국적</th><th>사업자</th><th>거래처</th><th>근무타입</th><th>상태</th></tr></thead>
+                        <thead><tr><th>번호</th><th>이름</th><th>국적</th><th>사업자</th><th>거래처</th><th>근무타입</th><th>상태</th><th>바로가기</th></tr></thead>
                         <tbody>{rows}</tbody>
                     </table>
                 </div>
@@ -338,4 +385,14 @@ def home() -> str:
         </div>
     </div>
     """
-    return render_page("홈", "home", content)
+    return render_page(
+        "홈",
+        "home",
+        content,
+        page_status=[
+            f"조회일 {current_date}",
+            f"거래처 {escape(get_client_company_name(client_company_id)) if client_company_id else '전체'}",
+            f"상태 {filter_title}",
+            f"표시 {shown_count} / {visible_count}명",
+        ],
+    )
