@@ -241,13 +241,13 @@ def home() -> str:
         <div class="hero-grid">
             <div>
                 <h2 class="hero-title">오늘의 인력 운영 상황을 한 번에 확인하세요</h2>
-                <p class="hero-copy">상태 카드를 누르면 아래 인력현황과 제목이 연결되고, 사원 검색과 거래처 필터도 같은 흐름으로 함께 동작합니다. 대시보드 중심으로 구조를 정리해 중복 느낌을 줄이고, 업무 흐름이 바로 보이도록 레이아웃을 다듬었습니다.</p>
+                <p class="hero-copy">상태 카드를 누르면 아래 인력현황과 제목이 연결되고, 사원 검색과 거래처 필터도 같은 흐름으로 함께 동작합니다. 홈 화면 중심으로 구조를 정리해 중복 느낌을 줄이고, 업무 흐름이 바로 보이도록 레이아웃을 다듬었습니다.</p>
             </div>
             {hero_metrics}
         </div>
     </div>
 
-    <div class="notice">대시보드는 요약 중심으로, 근태·인력·기록 기능은 상단 메뉴에서 분리해 중복 느낌을 줄였습니다. 숫자 카드를 누르면 아래 인력현황으로 연결되고, 표 영역은 마우스로 드래그해 가로·세로 스크롤할 수 있습니다.</div>
+    <div class="notice">홈 화면은 요약 중심으로, 근태·직원·기록 기능은 상단 메뉴에서 분리해 중복 느낌을 줄였습니다. 숫자 카드를 누르면 아래 인력현황으로 연결되고, 표 영역은 마우스로 드래그해 가로·세로 스크롤할 수 있습니다.</div>
 
     <form method="get" class="panel" style="margin-bottom:18px;">
         <div class="panel-body">
@@ -338,4 +338,4 @@ def home() -> str:
         </div>
     </div>
     """
-    return render_page("대시보드", "home", content)
+    return render_page("홈", "home", content)
