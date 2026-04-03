@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="summary-cards">
+  <button type="button" class="summary-card is-active" data-status="all">
+    <div class="summary-label">전체 인력</div>
+    <div class="summary-value">{{ summary.total }}</div>
+  </button>
+
+  <button type="button" class="summary-card" data-status="before_work">
+    <div class="summary-label">출근전</div>
+    <div class="summary-value">{{ summary.before_work }}</div>
+  </button>
+
+  <button type="button" class="summary-card" data-status="working">
+    <div class="summary-label">근무중</div>
+    <div class="summary-value">{{ summary.working }}</div>
+  </button>
+
+  <button type="button" class="summary-card" data-status="done">
+    <div class="summary-label">퇴근완료</div>
+    <div class="summary-value">{{ summary.done }}</div>
+  </button>
+
+  <button type="button" class="summary-card" data-status="hospital">
+    <div class="summary-label">병원</div>
+    <div class="summary-value">{{ summary.hospital }}</div>
+  </button>
+
+  <button type="button" class="summary-card" data-status="absent">
+    <div class="summary-label">결근</div>
+    <div class="summary-value">{{ summary.absent }}</div>
+  </button>
+</div>
+
+<div class="panel-header">
+  <div class="panel-title-wrap">
+    <h2 id="worker-panel-title">전체 인력현황</h2>
+    <p>{{ selected_date }} 기준</p>
+  </div>
+
+  <div class="panel-tools">
+    <label for="row-limit">인원수 제한</label>
+    <select id="row-limit">
+      <option value="5">5명</option>
+      <option value="10" selected>10명</option>
+      <option value="15">15명</option>
+      <option value="20">20명</option>
+      <option value="30">30명</option>
+      <option value="50">50명</option>
+    </select>
+    <span id="worker-panel-count">전체 상태 · 표시 0명 / 전체 0명</span>
+  </div>
+</div>
+
+<div class="table-scroll" id="worker-table-scroll">
+  <table class="worker-table">
+    <thead>
+      <tr>
+        <th>번호</th>
+        <th>이름</th>
+        <th>국적</th>
+        <th>사업자</th>
+        <th>거래처</th>
+        <th>근무타입</th>
+        <th>상태</th>
+      </tr>
+    </thead>
+    <tbody id="worker-table-body">
+      {% for row in workers %}
+      <tr class="worker-row" data-status="{{ row.status_key }}">
+        <td>{{ loop.index }}</td>
+        <td><a href="#">{{ row.name }}</a></td>
+        <td>{{ row.nationality }}</td>
+        <td>{{ row.business_name }}</td>
+        <td>{{ row.client_name }}</td>
+        <td>{{ row.work_type }}</td>
+        <td>
+          <span class="status-badge status-{{ row.status_key }}">
+            {{ row.status_label }}
+          </span>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<p class="table-help">표 안에서 마우스로 끌어서 스크롤할 수 있습니다.</p>
+
+<script src="{{ url_for('static', filename='js/app.js') }}?v=3"></script>
+{% endblock %}
