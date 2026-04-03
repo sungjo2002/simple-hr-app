@@ -1,3 +1,7 @@
+
+from html import escape
+from urllib.parse import urlencode
+
 from flask import Blueprint, request
 
 from models import ClientCompany
@@ -18,6 +22,34 @@ from utils import (
 
 home_bp = Blueprint("home", __name__)
 
+STATUS_LABELS = {
+    "all": "전체",
+    "before_work": "출근전",
+    "working": "근무중",
+    "completed": "퇴근완료",
+    "hospital": "병원",
+    "absent": "결근",
+}
+
+
+def _home_url(
+    current_date: str,
+    client_company_id: int | None,
+    employee_keyword: str,
+    selected_employee_id: int | None,
+    row_limit: int,
+    status_filter: str,
+) -> str:
+    query = {
+        "work_date": current_date,
+        "client_company_id": client_company_id or "",
+        "employee_keyword": employee_keyword,
+        "selected_employee_id": selected_employee_id or "",
+        "row_limit": row_limit,
+        "status_filter": status_filter,
+    }
+    return f"/?{urlencode(query)}"
+
 
 @home_bp.route("/")
 def home() -> str:
@@ -31,20 +63,24 @@ def home() -> str:
     row_limit = int(row_limit_raw) if row_limit_raw.isdigit() else 10
     if row_limit not in {5, 10, 15, 20, 30, 50}:
         row_limit = 10
-    status_filter = request.args.get("status_filter", "").strip()
+    status_filter = request.args.get("status_filter", "all").strip()
     if status_filter not in {"", "all", "before_work", "working", "completed", "hospital", "absent"}:
-        status_filter = ""
+        status_filter = "all"
+    if not status_filter:
+        status_filter = "all"
 
-    filtered_employees = get_employees_by_client_company(client_company_id)
+    all_employees = get_employees_by_client_company(client_company_id)
 
-    total = len(filtered_employees)
+    total = len(all_employees)
     before_count = count_status_for_client_company(client_company_id, current_date, "before_work")
     working_count = count_status_for_client_company(client_company_id, current_date, "working")
     completed_count = count_status_for_client_company(client_company_id, current_date, "completed")
     hospital_count = count_status_for_client_company(client_company_id, current_date, "hospital")
     absent_count = count_status_for_client_company(client_company_id, current_date, "absent")
 
-    if status_filter and status_filter != "all":
+    filtered_employees = list(all_employees)
+
+    if status_filter != "all":
         filtered_employees = [
             employee
             for employee in filtered_employees
@@ -65,26 +101,34 @@ def home() -> str:
     rows = ""
     for employee in visible_employees:
         row_style = ' style="background:#eff6ff;"' if selected_employee_id == employee.id else ""
+        detail_href = _home_url(
+            current_date=current_date,
+            client_company_id=client_company_id,
+            employee_keyword=employee_keyword,
+            selected_employee_id=employee.id,
+            row_limit=row_limit,
+            status_filter=status_filter,
+        )
         rows += f"""
         <tr{row_style}>
             <td>{employee.id}</td>
-            <td><a href="/?work_date={current_date}&client_company_id={client_company_id or ''}&employee_keyword={employee_keyword}&selected_employee_id={employee.id}&row_limit={row_limit}">{employee.name}</a></td>
-            <td>{employee.nationality}</td>
-            <td>{get_our_business_name(employee.our_business_id)}</td>
-            <td>{get_client_company_name(employee.current_client_company_id)}</td>
-            <td>{get_work_type_name(employee.work_type_id)}</td>
+            <td><a href="{detail_href}">{escape(employee.name)}</a></td>
+            <td>{escape(employee.nationality or "-")}</td>
+            <td>{escape(get_our_business_name(employee.our_business_id))}</td>
+            <td>{escape(get_client_company_name(employee.current_client_company_id))}</td>
+            <td>{escape(get_work_type_name(employee.work_type_id))}</td>
             <td>{status_badge(get_display_status(employee.id, current_date))}</td>
         </tr>
         """
     if not rows:
-        rows = '<tr><td colspan="7">인력이 없습니다.</td></tr>'
+        rows = '<tr><td colspan="7">조건에 맞는 인력이 없습니다.</td></tr>'
 
     client_options = ['<option value="">전체 거래처</option>']
     for client in ClientCompany.query.order_by(ClientCompany.id.asc()).all():
         selected = "selected" if client_company_id == client.id else ""
-        client_options.append(f'<option value="{client.id}" {selected}>{client.name}</option>')
+        client_options.append(f'<option value="{client.id}" {selected}>{escape(client.name)}</option>')
 
-    matched_employees = get_employees_by_client_company(client_company_id)
+    matched_employees = list(all_employees)
     if employee_keyword:
         lowered = employee_keyword.lower()
         matched_employees = [employee for employee in matched_employees if lowered in employee.name.lower()]
@@ -94,35 +138,114 @@ def home() -> str:
     selected_employee = get_employee(selected_employee_id) if selected_employee_id else None
     scorecard = calculate_employee_scorecard(selected_employee_id) if selected_employee_id else None
 
-    score_html = '<div class="muted">사원을 검색하면 지표가 표시됩니다.</div>'
+    score_html = '<div class="empty-score">왼쪽에서 사원을 검색하거나 표의 이름을 누르면 인력 지표가 이곳에 표시됩니다.</div>'
     if selected_employee and scorecard:
         work_score = scorecard["work_score"]
         sincerity_score = scorecard["sincerity_score"]
         stability_score = scorecard["stability_score"]
+        average_score = round((work_score + sincerity_score + stability_score) / 3)
         score_html = f"""
         <div class="score-box">
-            <div class="score-row"><div class="score-label">일 잘함</div><div class="bar-wrap"><div class="bar-fill {score_bar_class(work_score)}" style="width:{work_score}%;"></div></div><div class="score-num">{work_score}</div></div>
+            <div class="score-header">
+                <div>
+                    <h3 class="score-title">{escape(selected_employee.name)} 인력지표</h3>
+                    <div class="muted">{escape(selected_employee.nationality or "-")} · {escape(get_client_company_name(selected_employee.current_client_company_id))}</div>
+                </div>
+                <div class="score-chip">기록 {scorecard["record_count"]}건</div>
+            </div>
+            <div class="score-summary">
+                <div class="score-summary-card">
+                    <div class="score-summary-label">종합 점수</div>
+                    <div class="score-summary-value">{average_score}</div>
+                </div>
+                <div class="score-summary-card">
+                    <div class="score-summary-label">현재 상태</div>
+                    <div class="score-summary-value" style="font-size:18px;">{STATUS_LABELS.get(get_display_status(selected_employee.id, current_date), "확인중")}</div>
+                </div>
+                <div class="score-summary-card">
+                    <div class="score-summary-label">배치 사업장</div>
+                    <div class="score-summary-value" style="font-size:18px;">{escape(get_our_business_name(selected_employee.our_business_id))}</div>
+                </div>
+            </div>
+            <div class="score-row"><div class="score-label">업무 수행</div><div class="bar-wrap"><div class="bar-fill {score_bar_class(work_score)}" style="width:{work_score}%;"></div></div><div class="score-num">{work_score}</div></div>
             <div class="score-row"><div class="score-label">성실도</div><div class="bar-wrap"><div class="bar-fill {score_bar_class(sincerity_score)}" style="width:{sincerity_score}%;"></div></div><div class="score-num">{sincerity_score}</div></div>
             <div class="score-row"><div class="score-label">안정성</div><div class="bar-wrap"><div class="bar-fill {score_bar_class(stability_score)}" style="width:{stability_score}%;"></div></div><div class="score-num">{stability_score}</div></div>
-            <div class="muted" style="margin-top:4px;">선택 인력: {selected_employee.name} / 기록 {scorecard["record_count"]}건</div>
+            <div class="legend-list">
+                <div class="legend-item">
+                    <div class="legend-title">거래처</div>
+                    <div class="legend-value">{escape(get_client_company_name(selected_employee.current_client_company_id))}</div>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-title">근무 타입</div>
+                    <div class="legend-value">{escape(get_work_type_name(selected_employee.work_type_id))}</div>
+                </div>
+            </div>
         </div>
         """
 
-    table_max_height = max(360, min(1100, 88 + row_limit * 54))
+    table_max_height = max(380, min(1120, 100 + row_limit * 54))
     visible_count = len(filtered_employees)
     shown_count = len(visible_employees)
-    filter_title = {
-        "": "전체",
-        "all": "전체",
-        "before_work": "출근전",
-        "working": "근무중",
-        "completed": "퇴근완료",
-        "hospital": "병원",
-        "absent": "결근",
-    }.get(status_filter, "전체")
+    filter_title = STATUS_LABELS.get(status_filter, "전체")
+
+    card_defs = [
+        ("all", "전체 인력", total, "조회 대상 전체 인원"),
+        ("before_work", "출근전", before_count, "아직 출근 처리 전"),
+        ("working", "근무중", working_count, "현재 근무 진행중"),
+        ("completed", "퇴근완료", completed_count, "당일 근무 종료"),
+        ("hospital", "병원", hospital_count, "병원/진료 처리"),
+        ("absent", "결근", absent_count, "결근 처리 인원"),
+    ]
+    cards_html = []
+    for key, label, value, note in card_defs:
+        cards_html.append(
+            f"""
+            <a class="card card-link {'active' if status_filter == key else ''}" href="{_home_url(current_date, client_company_id, employee_keyword, selected_employee_id, row_limit, key)}">
+                <div class="label">{label}</div>
+                <div class="value">{value}</div>
+                <div class="value-sub">{note}</div>
+            </a>
+            """
+        )
+
+    hero_metrics = f"""
+    <div class="hero-metrics">
+        <div class="hero-metric">
+            <div class="hero-metric-label">오늘 조회일</div>
+            <div class="hero-metric-value">{current_date}</div>
+            <div class="hero-metric-note">현재 기준일</div>
+        </div>
+        <div class="hero-metric">
+            <div class="hero-metric-label">선택 거래처</div>
+            <div class="hero-metric-value">{escape(get_client_company_name(client_company_id)) if client_company_id else '전체'}</div>
+            <div class="hero-metric-note">범위 필터</div>
+        </div>
+        <div class="hero-metric">
+            <div class="hero-metric-label">현재 상태 필터</div>
+            <div class="hero-metric-value">{filter_title}</div>
+            <div class="hero-metric-note">아래 목록과 연동</div>
+        </div>
+        <div class="hero-metric">
+            <div class="hero-metric-label">표시 인원</div>
+            <div class="hero-metric-value">{shown_count} / {visible_count}</div>
+            <div class="hero-metric-note">행 제한 반영</div>
+        </div>
+    </div>
+    """
 
     content = f"""
-    <div class="notice">조회 인원이 많을 때는 표 영역에서 마우스로 드래그해서 가로·세로 스크롤할 수 있습니다.</div>
+    <div class="hero-panel">
+        <div class="hero-grid">
+            <div>
+                <h2 class="hero-title">오늘의 인력 운영 상황을 한 번에 확인하세요</h2>
+                <p class="hero-copy">상태 카드를 누르면 아래 인력현황과 제목이 연결되고, 사원 검색과 거래처 필터도 같은 흐름으로 함께 동작합니다. 대시보드 중심으로 구조를 정리해 중복 느낌을 줄이고, 업무 흐름이 바로 보이도록 레이아웃을 다듬었습니다.</p>
+            </div>
+            {hero_metrics}
+        </div>
+    </div>
+
+    <div class="notice">상단 메뉴는 추천 구조에 맞춰 재편했습니다. 숫자 카드를 누르면 같은 화면 안에서 해당 상태 인력현황으로 연결되고, 표 영역은 마우스로 드래그해 가로·세로 스크롤할 수 있습니다.</div>
+
     <form method="get" class="panel" style="margin-bottom:18px;">
         <div class="panel-body">
             <div class="form-grid">
@@ -140,35 +263,20 @@ def home() -> str:
                 </div>
             </div>
             <div class="actions">
-                <button class="btn btn-white" type="submit">조회</button>
-                <a class="btn btn-white" href="/">초기화</a>
+                <button class="btn btn-primary" type="submit">조회 적용</button>
+                <a class="btn btn-white" href="/">전체 초기화</a>
             </div>
         </div>
     </form>
+
     <div class="cards">
-        <a class="card card-link {"active" if status_filter in {"", "all"} else ""}" href="/?work_date={current_date}&client_company_id={client_company_id or ''}&employee_keyword={employee_keyword}&selected_employee_id={selected_employee_id or ''}&row_limit={row_limit}&status_filter=all">
-            <div class="label">전체 인력</div><div class="value">{total}</div>
-        </a>
-        <a class="card card-link {"active" if status_filter == "before_work" else ""}" href="/?work_date={current_date}&client_company_id={client_company_id or ''}&employee_keyword={employee_keyword}&selected_employee_id={selected_employee_id or ''}&row_limit={row_limit}&status_filter=before_work">
-            <div class="label">출근전</div><div class="value">{before_count}</div>
-        </a>
-        <a class="card card-link {"active" if status_filter == "working" else ""}" href="/?work_date={current_date}&client_company_id={client_company_id or ''}&employee_keyword={employee_keyword}&selected_employee_id={selected_employee_id or ''}&row_limit={row_limit}&status_filter=working">
-            <div class="label">근무중</div><div class="value">{working_count}</div>
-        </a>
-        <a class="card card-link {"active" if status_filter == "completed" else ""}" href="/?work_date={current_date}&client_company_id={client_company_id or ''}&employee_keyword={employee_keyword}&selected_employee_id={selected_employee_id or ''}&row_limit={row_limit}&status_filter=completed">
-            <div class="label">퇴근완료</div><div class="value">{completed_count}</div>
-        </a>
-        <a class="card card-link {"active" if status_filter == "hospital" else ""}" href="/?work_date={current_date}&client_company_id={client_company_id or ''}&employee_keyword={employee_keyword}&selected_employee_id={selected_employee_id or ''}&row_limit={row_limit}&status_filter=hospital">
-            <div class="label">병원</div><div class="value">{hospital_count}</div>
-        </a>
-        <a class="card card-link {"active" if status_filter == "absent" else ""}" href="/?work_date={current_date}&client_company_id={client_company_id or ''}&employee_keyword={employee_keyword}&selected_employee_id={selected_employee_id or ''}&row_limit={row_limit}&status_filter=absent">
-            <div class="label">결근</div><div class="value">{absent_count}</div>
-        </a>
+        {"".join(cards_html)}
     </div>
+
     <div class="home-grid">
         <div>
             <div class="panel" style="margin-bottom:18px;">
-                <div class="panel-head"><h2>사원검색</h2><p>검색 결과와 인력현황 연동</p></div>
+                <div class="panel-head"><div><h2>사원검색</h2><p>이름 검색과 상세 선택을 한 번에 처리</p></div></div>
                 <div class="panel-body">
                     <form method="get">
                         <input type="hidden" name="work_date" value="{current_date}">
@@ -176,30 +284,30 @@ def home() -> str:
                         <input type="hidden" name="row_limit" value="{row_limit}">
                         <input type="hidden" name="status_filter" value="{status_filter}">
                         <label>사원 이름 검색</label>
-                        <input name="employee_keyword" value="{employee_keyword}" placeholder="예: 성조, 응우옌">
+                        <input name="employee_keyword" value="{escape(employee_keyword)}" placeholder="예: 성조, 응우옌">
                         <div class="actions">
                             <button class="btn btn-primary" type="submit">검색</button>
-                            <a class="btn btn-white" href="/?work_date={current_date}&client_company_id={client_company_id or ''}&row_limit={row_limit}&status_filter={status_filter}">초기화</a>
+                            <a class="btn btn-white" href="{_home_url(current_date, client_company_id, '', None, row_limit, status_filter)}">검색 초기화</a>
                         </div>
                     </form>
                 </div>
             </div>
             <div class="panel">
-                <div class="panel-head"><h2>인력 지표</h2><p>가로 그래프</p></div>
+                <div class="panel-head"><div><h2>인력 지표</h2><p>선택 인력의 업무 수행, 성실도, 안정성을 시각화</p></div></div>
                 <div class="panel-body">{score_html}</div>
             </div>
         </div>
         <div class="panel">
             <div class="panel-head">
                 <div>
-                    <h2>인력현황</h2>
-                    <p>{current_date} 기준</p>
+                    <h2>{filter_title} 인력현황</h2>
+                    <p>{current_date} 기준 · 카드, 검색, 거래처 필터가 동일하게 반영됩니다.</p>
                 </div>
                 <div class="panel-head-actions">
                     <form method="get" class="head-control">
                         <input type="hidden" name="work_date" value="{current_date}">
                         <input type="hidden" name="client_company_id" value="{client_company_id or ''}">
-                        <input type="hidden" name="employee_keyword" value="{employee_keyword}">
+                        <input type="hidden" name="employee_keyword" value="{escape(employee_keyword)}">
                         <input type="hidden" name="selected_employee_id" value="{selected_employee_id or ''}">
                         <input type="hidden" name="status_filter" value="{status_filter}">
                         <label for="row_limit_top" style="margin:0;">인원수 제한</label>
@@ -227,4 +335,4 @@ def home() -> str:
         </div>
     </div>
     """
-    return render_page("메인", "home", content)
+    return render_page("대시보드", "home", content)
