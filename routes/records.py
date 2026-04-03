@@ -24,8 +24,8 @@ def records_page() -> str:
 
     subtabs = f"""
     <div class="subtabs">
-        <a class="{'active' if selected_tab == 'all' else ''}" href="/records?tab=all&client_company_id={selected_client_company_id or ''}&month={selected_month}">전체 출퇴기록</a>
-        <a class="{'active' if selected_tab == 'monthly' else ''}" href="/records?tab=monthly&client_company_id={selected_client_company_id or ''}&month={selected_month}">월별 출석현황</a>
+        <a class="{'active' if selected_tab == 'all' else ''}" href="/records?tab=all&client_company_id={selected_client_company_id or ''}&month={selected_month}">근태조회</a>
+        <a class="{'active' if selected_tab == 'monthly' else ''}" href="/records?tab=monthly&client_company_id={selected_client_company_id or ''}&month={selected_month}">월별현황</a>
     </div>
     """
     filter_form = f"""
@@ -121,5 +121,5 @@ def records_page() -> str:
         </div>
         """
     content = f"{subtabs}{filter_form}{tab_content}"
-    quick = [{"label": "전체 출퇴기록", "href": "/records?tab=all"}, {"label": "월별 출석현황", "href": "/records?tab=monthly"}]
+    quick = [{"label": "근태조회", "href": "/records?tab=all"}, {"label": "월별현황", "href": "/records?tab=monthly"}]
     return render_page("기록조회", "records", content, quick)

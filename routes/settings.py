@@ -23,4 +23,4 @@ def settings_page() -> str:
         </div>
     </div>
     """
-    return render_page("설정", "settings", content)
+    return render_page("설정", "settings", content, [{"label": "사용자관리", "href": "/settings"}, {"label": "시스템설정", "href": "/settings"}])

@@ -89,5 +89,5 @@ def attendance_page() -> str:
         </div>
     </div>
     """
-    quick = [{"label": "근태관리", "href": "/attendance"}, {"label": "기록조회", "href": "/records"}]
+    quick = [{"label": "오늘근태", "href": "/attendance"}, {"label": "근태조회", "href": "/records?tab=all"}, {"label": "월별현황", "href": "/records?tab=monthly"}]
     return render_page("근태관리", "attendance", content, quick)

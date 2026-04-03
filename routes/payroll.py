@@ -73,4 +73,4 @@ def payroll_page() -> str:
         </div>
     </div>
     """
-    return render_page("급여관리", "payroll", content, [{"label": "급여관리", "href": "/payroll"}])
+    return render_page("급여관리", "payroll", content, [{"label": "급여계산", "href": "/payroll"}])
