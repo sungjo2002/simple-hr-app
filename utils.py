@@ -615,13 +615,11 @@ BASE_HTML = """
         </div>
         {% if active in ['client_companies', 'our_businesses'] %}
         <div class="quickbar">
-            <span class="section-chip">회사관리</span>
             <a href="/our-businesses" class="{{ 'active' if active == 'our_businesses' else '' }}">사업자관리</a>
             <a href="/client-companies" class="{{ 'active' if active == 'client_companies' else '' }}">거래처관리</a>
         </div>
         {% elif quick_links %}
         <div class="quickbar">
-            <span class="section-chip">{{ title }}</span>
             {% for item in quick_links %}
                 <a href="{{ item.href }}" class="{{ 'active' if item.get('active') else '' }}">{{ item.label }}</a>
             {% endfor %}

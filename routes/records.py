@@ -21,6 +21,13 @@ def records_page() -> str:
     for client in ClientCompany.query.order_by(ClientCompany.id.asc()).all():
         selected = "selected" if selected_client_company_id == client.id else ""
         client_filter_options.append(f'<option value="{client.id}" {selected}>{client.name}</option>')
+
+    subtabs = f"""
+    <div class="subtabs">
+        <a class="{'active' if selected_tab == 'all' else ''}" href="/records?tab=all&client_company_id={selected_client_company_id or ''}&month={selected_month}">근태조회</a>
+        <a class="{'active' if selected_tab == 'monthly' else ''}" href="/records?tab=monthly&client_company_id={selected_client_company_id or ''}&month={selected_month}">월별현황</a>
+    </div>
+    """
     filter_form = f"""
     <div class="panel" style="margin-bottom:18px;">
         <div class="panel-body">
@@ -113,7 +120,7 @@ def records_page() -> str:
             </div>
         </div>
         """
-    content = f"{filter_form}{tab_content}"
+    content = f"{subtabs}{filter_form}{tab_content}"
     quick = [
         {"label": "근태조회", "href": "/records?tab=all", "active": selected_tab == "all"},
         {"label": "월별현황", "href": "/records?tab=monthly", "active": selected_tab == "monthly"},
