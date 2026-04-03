@@ -71,6 +71,7 @@ def ui_text(label_key: str, default: str) -> str:
 def _public_menu_items() -> list[AdminMenu]:
     return (
         AdminMenu.query
+        .filter(AdminMenu.code != "admin_shortcut")
         .filter(AdminMenu.route_path.notlike("/admin%"))
         .order_by(AdminMenu.sort_order.asc(), AdminMenu.id.asc())
         .all()
@@ -204,6 +205,9 @@ APP_LAYOUT_HTML = """
         justify-content:flex-end;
     }
     .meta-pill {
+        display:inline-flex;
+        align-items:center;
+        justify-content:center;
         padding:10px 12px;
         border-radius:999px;
         border:1px solid rgba(255,255,255,.16);
@@ -212,6 +216,9 @@ APP_LAYOUT_HTML = """
         font-size:13px;
         font-weight:700;
         color:#f8fbff;
+    }
+    .meta-link {
+        text-decoration:none;
     }
     .menu-shell {
         position:sticky;
@@ -390,6 +397,7 @@ APP_LAYOUT_HTML = """
             <div class="topbar-meta">
                 <div class="meta-pill">오늘 {{ today }}</div>
                 <div class="meta-pill">운영화면</div>
+                <a class="meta-pill meta-link" href="/admin">{{ admin_entry_label }}</a>
             </div>
         </div>
     </div>
@@ -739,6 +747,7 @@ def render_page(
         brand_title=ui_text("app_brand_name", "멀티사업자 인력·근태·급여 관리"),
         brand_desc=ui_text("app_brand_desc", "인력, 근태, 급여를 한 화면 흐름으로 관리하는 운영 서비스입니다."),
         today=today_str(),
+        admin_entry_label=ui_text("admin_entry_label", "관리자"),
     )
 
 

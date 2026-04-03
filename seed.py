@@ -74,6 +74,7 @@ def _seed_admin_defaults() -> None:
         ("home_card_completed", "퇴근완료", "dashboard", "홈 카드 제목"),
         ("home_card_hospital", "병원", "dashboard", "홈 카드 제목"),
         ("home_card_absent", "결근", "dashboard", "홈 카드 제목"),
+        ("admin_entry_label", "관리자", "admin", "사용자 화면 관리자 진입 버튼"),
         ("admin_brand_name", "멀티사업자 관리자", "admin", "관리자 화면 서비스명"),
         ("admin_brand_kicker", "admin center", "admin", "관리자 화면 상단 작은 제목"),
         ("admin_brand_desc", "사용자 화면과 분리된 설정 전용 관리 영역입니다.", "admin", "관리자 영역 설명"),
