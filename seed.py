@@ -1,4 +1,7 @@
 from models import (
+    AdminMenu,
+    AdminPage,
+    UiLabel,
     AttendanceRecord,
     ClientCompany,
     ClientCompanyPayrollSetting,
@@ -11,6 +14,68 @@ from models import (
 )
 from utils import today_str
 
+
+
+
+def _seed_admin_defaults() -> None:
+    menu_defaults = [
+        ("admin_dashboard", "관리자홈", "", "/admin", 1),
+        ("admin_menu", "메뉴관리", "", "/admin/menus", 2),
+        ("admin_page", "화면관리", "", "/admin/pages", 3),
+        ("admin_label", "문구관리", "", "/admin/labels", 4),
+        ("admin_log", "관리로그", "", "/admin/logs", 5),
+    ]
+    for code, name, parent_code, route_path, sort_order in menu_defaults:
+        item = AdminMenu.query.filter_by(code=code).first()
+        if item is None:
+            item = AdminMenu(
+                code=code,
+                name=name,
+                parent_code=parent_code,
+                route_path=route_path,
+                sort_order=sort_order,
+                is_active=True,
+            )
+            db.session.add(item)
+
+    page_defaults = [
+        ("admin_dashboard", "관리자홈", "/admin", "admin", "관리자 운영 현황 대시보드"),
+        ("menu_management", "메뉴관리", "/admin/menus", "admin", "메뉴 구조와 링크 관리"),
+        ("page_management", "화면관리", "/admin/pages", "admin", "페이지 연결과 확장 관리"),
+        ("label_management", "문구관리", "/admin/labels", "admin", "메뉴명, 제목, 버튼명 관리"),
+        ("admin_logs", "관리로그", "/admin/logs", "admin", "변경 이력과 작업 로그 관리"),
+    ]
+    for page_key, page_name, route_path, category, description in page_defaults:
+        item = AdminPage.query.filter_by(page_key=page_key).first()
+        if item is None:
+            item = AdminPage(
+                page_key=page_key,
+                page_name=page_name,
+                route_path=route_path,
+                category=category,
+                description=description,
+                is_active=True,
+            )
+            db.session.add(item)
+
+    label_defaults = [
+        ("menu_admin", "관리자", "menu", "상단 관리자 메뉴명"),
+        ("admin_dashboard_title", "관리자 홈", "admin", "관리자 대시보드 제목"),
+        ("admin_menu_title", "메뉴관리", "admin", "메뉴관리 화면 제목"),
+        ("admin_page_title", "화면관리", "admin", "화면관리 화면 제목"),
+        ("admin_label_title", "문구관리", "admin", "문구관리 화면 제목"),
+    ]
+    for label_key, label_text, category, description in label_defaults:
+        item = UiLabel.query.filter_by(label_key=label_key).first()
+        if item is None:
+            item = UiLabel(
+                label_key=label_key,
+                label_text=label_text,
+                category=category,
+                description=description,
+                is_active=True,
+            )
+            db.session.add(item)
 
 def seed_database() -> None:
     if OurBusiness.query.first():
@@ -41,6 +106,7 @@ def seed_database() -> None:
         memo="",
     )
     db.session.add_all([our1, our2])
+    _seed_admin_defaults()
     db.session.commit()
 
     clients = [

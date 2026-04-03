@@ -211,6 +211,101 @@ BASE_HTML = """
         color:var(--primary);
         border-color:#bfdbfe;
     }
+
+.hero-card {
+    background:linear-gradient(135deg,#ffffff 0%, #f8fbff 100%);
+    border:1px solid var(--line);
+    border-radius:24px;
+    padding:24px;
+    display:flex;
+    flex-wrap:wrap;
+    gap:18px;
+    justify-content:space-between;
+    align-items:center;
+    box-shadow:var(--shadow-soft);
+    margin-bottom:20px;
+}
+.eyebrow {
+    font-size:12px;
+    font-weight:800;
+    color:var(--primary);
+    letter-spacing:.14em;
+    margin-bottom:8px;
+}
+.hero-actions {
+    display:flex;
+    flex-wrap:wrap;
+    gap:10px;
+}
+.toolbar {
+    display:flex;
+    flex-wrap:wrap;
+    gap:10px;
+    margin-bottom:14px;
+}
+.btn {
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    min-height:40px;
+    padding:0 14px;
+    border-radius:12px;
+    border:1px solid var(--line-strong);
+    color:var(--primary-deep);
+    text-decoration:none;
+    font-weight:700;
+    background:#fff;
+}
+.btn-primary {
+    background:var(--primary);
+    border-color:var(--primary);
+    color:#fff;
+}
+.stat-grid {
+    display:grid;
+    grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));
+    gap:14px;
+    margin-bottom:20px;
+}
+.stat-card {
+    background:#fff;
+    border:1px solid var(--line);
+    border-radius:20px;
+    padding:18px;
+    box-shadow:var(--shadow-soft);
+}
+.stat-label {
+    font-size:13px;
+    font-weight:700;
+    color:var(--muted);
+    margin-bottom:8px;
+}
+.stat-value {
+    font-size:30px;
+    font-weight:800;
+    line-height:1.05;
+    color:var(--text);
+    margin-bottom:8px;
+}
+.stat-meta {
+    font-size:13px;
+    color:var(--muted);
+}
+.two-col {
+    display:grid;
+    grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));
+    gap:16px;
+}
+.bullet-list {
+    margin:0;
+    padding-left:18px;
+    color:var(--text);
+}
+.bullet-list li {
+    margin:8px 0;
+    line-height:1.5;
+}
+
     .wrap {
         width:min(100%,1220px);
         margin:0 auto;
@@ -574,7 +669,102 @@ BASE_HTML = """
         .content-grid,.home-grid,.two-col,.hero-grid { grid-template-columns:1fr; }
     }
     @media (max-width:768px) {
-        .wrap { padding:12px; }
+    
+.hero-card {
+    background:linear-gradient(135deg,#ffffff 0%, #f8fbff 100%);
+    border:1px solid var(--line);
+    border-radius:24px;
+    padding:24px;
+    display:flex;
+    flex-wrap:wrap;
+    gap:18px;
+    justify-content:space-between;
+    align-items:center;
+    box-shadow:var(--shadow-soft);
+    margin-bottom:20px;
+}
+.eyebrow {
+    font-size:12px;
+    font-weight:800;
+    color:var(--primary);
+    letter-spacing:.14em;
+    margin-bottom:8px;
+}
+.hero-actions {
+    display:flex;
+    flex-wrap:wrap;
+    gap:10px;
+}
+.toolbar {
+    display:flex;
+    flex-wrap:wrap;
+    gap:10px;
+    margin-bottom:14px;
+}
+.btn {
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    min-height:40px;
+    padding:0 14px;
+    border-radius:12px;
+    border:1px solid var(--line-strong);
+    color:var(--primary-deep);
+    text-decoration:none;
+    font-weight:700;
+    background:#fff;
+}
+.btn-primary {
+    background:var(--primary);
+    border-color:var(--primary);
+    color:#fff;
+}
+.stat-grid {
+    display:grid;
+    grid-template-columns:repeat(auto-fit, minmax(180px, 1fr));
+    gap:14px;
+    margin-bottom:20px;
+}
+.stat-card {
+    background:#fff;
+    border:1px solid var(--line);
+    border-radius:20px;
+    padding:18px;
+    box-shadow:var(--shadow-soft);
+}
+.stat-label {
+    font-size:13px;
+    font-weight:700;
+    color:var(--muted);
+    margin-bottom:8px;
+}
+.stat-value {
+    font-size:30px;
+    font-weight:800;
+    line-height:1.05;
+    color:var(--text);
+    margin-bottom:8px;
+}
+.stat-meta {
+    font-size:13px;
+    color:var(--muted);
+}
+.two-col {
+    display:grid;
+    grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));
+    gap:16px;
+}
+.bullet-list {
+    margin:0;
+    padding-left:18px;
+    color:var(--text);
+}
+.bullet-list li {
+    margin:8px 0;
+    line-height:1.5;
+}
+
+    .wrap { padding:12px; }
         .menu,.quickbar { padding:10px 12px; gap:12px; }
         .menu a { font-size:14px; }
         .topbar { padding:16px 14px 18px; }
@@ -612,9 +802,11 @@ BASE_HTML = """
             <a href="/payroll" class="{{ 'active' if active=='payroll' else '' }}">급여관리</a>
             <a href="/records" class="{{ 'active' if active=='records' else '' }}">기록조회</a>
             <a href="/settings" class="{{ 'active' if active=='settings' else '' }}">설정</a>
+            <a href="/admin" class="{{ 'active' if active=='admin' else '' }}">관리자</a>
         </div>
         {% if active in ['client_companies', 'our_businesses'] %}
         <div class="quickbar">
+            <span class="section-chip">회사관리</span>
             <a href="/our-businesses" class="{{ 'active' if active == 'our_businesses' else '' }}">사업자관리</a>
             <a href="/client-companies" class="{{ 'active' if active == 'client_companies' else '' }}">거래처관리</a>
         </div>
