@@ -162,6 +162,28 @@ def home() -> str:
 
     scorecard = calculate_employee_scorecard(selected_employee_id) if selected_employee_id else None
 
+    detail_records_href = "#"
+    monthly_records_href = "#"
+    payroll_detail_href = "#"
+    if selected_employee:
+        detail_records_href = _records_url(
+            "all",
+            current_date,
+            selected_employee.current_client_company_id,
+            selected_employee.name,
+        )
+        monthly_records_href = _records_url(
+            "monthly",
+            current_date,
+            selected_employee.current_client_company_id,
+            selected_employee.name,
+        )
+        payroll_detail_href = _payroll_url(
+            current_date,
+            selected_employee.current_client_company_id,
+            selected_employee.name,
+        )
+
     score_html = '<div class="empty-score">왼쪽에서 사원을 검색하거나 표의 이름을 누르면 인력 지표가 이곳에 표시됩니다.</div>'
     if selected_employee and scorecard:
         work_score = scorecard["work_score"]
