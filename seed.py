@@ -283,10 +283,10 @@ def seed_database() -> None:
     db.session.commit()
 
     documents = [
-        EmployeeDocument(employee_id=employees[0].id, document_type="id_card", file_name="kim_id.pdf", description="주민등록증 사본"),
-        EmployeeDocument(employee_id=employees[1].id, document_type="id_card", file_name="park_id.pdf", description="신분증"),
-        EmployeeDocument(employee_id=employees[2].id, document_type="passport", file_name="jang_passport.pdf", description="여권"),
-        EmployeeDocument(employee_id=employees[3].id, document_type="other", file_name="lee_license.pdf", description="자격증 사본"),
+        EmployeeDocument(employee_id=employees[0].id, document_type="id_card", file_name="kim_id.pdf"),
+        EmployeeDocument(employee_id=employees[1].id, document_type="id_card", file_name="park_id.pdf"),
+        EmployeeDocument(employee_id=employees[2].id, document_type="passport", file_name="jang_passport.pdf"),
+        EmployeeDocument(employee_id=employees[3].id, document_type="other", file_name="lee_license.pdf"),
     ]
     db.session.add_all(documents)
 
