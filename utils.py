@@ -6,7 +6,7 @@ from typing import Any
 
 from flask import render_template_string
 
-from models import AttendanceRecord, ClientCompany, ClientCompanyPayrollSetting, ClientCompanySetting, ClientCompanyWorkType, Employee, EmployeeDocument, OurBusiness, db
+from models import AdminMenu, AttendanceRecord, ClientCompany, ClientCompanyPayrollSetting, ClientCompanySetting, ClientCompanyWorkType, Employee, EmployeeDocument, OurBusiness, UiLabel, db
 
 ATTENDANCE_STATUS = {
     "before_work": "출근전",
@@ -795,25 +795,15 @@ BASE_HTML = """
     </div>
     <div class="menu-shell">
         <div class="menu">
-            <a href="/" class="{{ 'active' if active=='home' else '' }}">홈</a>
-            <a href="/employees" class="{{ 'active' if active=='employees' else '' }}">직원관리</a>
-            <a href="/attendance" class="{{ 'active' if active=='attendance' else '' }}">근태관리</a>
-            <a href="/client-companies" class="{{ 'active' if active in ['client_companies', 'our_businesses'] else '' }}">회사관리</a>
-            <a href="/payroll" class="{{ 'active' if active=='payroll' else '' }}">급여관리</a>
-            <a href="/records" class="{{ 'active' if active=='records' else '' }}">기록조회</a>
-            <a href="/settings" class="{{ 'active' if active=='settings' else '' }}">설정</a>
-            <a href="/admin" class="{{ 'active' if active=='admin' else '' }}">관리자</a>
+            {% for item in main_menu %}
+            <a href="{{ item.href }}" class="{{ 'active' if item.active else '' }}">{{ item.name }}</a>
+            {% endfor %}
         </div>
-        {% if active in ['client_companies', 'our_businesses'] %}
+        {% if quick_links %}
         <div class="quickbar">
-            <span class="section-chip">회사관리</span>
-            <a href="/our-businesses" class="{{ 'active' if active == 'our_businesses' else '' }}">사업자관리</a>
-            <a href="/client-companies" class="{{ 'active' if active == 'client_companies' else '' }}">거래처관리</a>
-        </div>
-        {% elif quick_links %}
-        <div class="quickbar">
+            {% if section_title %}<span class="section-chip">{{ section_title }}</span>{% endif %}
             {% for item in quick_links %}
-                <a href="{{ item.href }}" class="{{ 'active' if item.get('active') else '' }}">{{ item.label }}</a>
+                <a href="{{ item.href }}" class="{{ 'active' if item.get('active') else '' }}">{{ item.get('label', item.get('name', '')) }}</a>
             {% endfor %}
         </div>
         {% endif %}
@@ -889,13 +879,109 @@ BASE_HTML = """
 """
 
 
+
+
+def ui_text(label_key: str, default: str) -> str:
+    item = UiLabel.query.filter_by(label_key=label_key, is_active=True).first()
+    if item and item.label_text.strip():
+        return item.label_text.strip()
+    return default
+
+
+def _fallback_navigation(active: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]], str]:
+    roots = [
+        {"code": "home", "name": "홈", "href": "/"},
+        {"code": "employees", "name": "직원관리", "href": "/employees"},
+        {"code": "attendance", "name": "근태관리", "href": "/attendance"},
+        {"code": "company", "name": "회사관리", "href": "/client-companies"},
+        {"code": "payroll", "name": "급여관리", "href": "/payroll"},
+        {"code": "records", "name": "기록조회", "href": "/records"},
+        {"code": "settings", "name": "설정", "href": "/settings"},
+        {"code": "admin", "name": "관리자", "href": "/admin"},
+    ]
+    children_map = {
+        "company": [
+            {"code": "our_businesses", "name": "사업자관리", "href": "/our-businesses"},
+            {"code": "client_companies", "name": "거래처관리", "href": "/client-companies"},
+        ],
+        "admin": [
+            {"code": "admin_home", "name": "관리자 홈", "href": "/admin"},
+            {"code": "admin_menus", "name": "메뉴관리", "href": "/admin/menus"},
+            {"code": "admin_labels", "name": "문구관리", "href": "/admin/labels"},
+        ],
+    }
+    parent_map = {"our_businesses": "company", "client_companies": "company", "admin_home": "admin", "admin_menus": "admin", "admin_labels": "admin"}
+    active_root = parent_map.get(active, active)
+    main_menu = [{**item, "active": item["code"] == active_root} for item in roots]
+    sub_menu = [{**item, "active": item["code"] == active} for item in children_map.get(active_root, [])]
+    section_title = next((item["name"] for item in roots if item["code"] == active_root), "")
+    return main_menu, sub_menu, section_title
+
+
+def get_navigation(active: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]], str]:
+    items = AdminMenu.query.order_by(AdminMenu.sort_order.asc(), AdminMenu.id.asc()).all()
+    if not items:
+        return _fallback_navigation(active)
+
+    code_map = {item.code: item for item in items}
+    child_map: dict[str, list[AdminMenu]] = {}
+    for item in items:
+        parent_key = item.parent_code or ""
+        child_map.setdefault(parent_key, []).append(item)
+
+    current = code_map.get(active)
+    active_root_code = active
+    visited: set[str] = set()
+    while current and current.parent_code and current.parent_code in code_map and current.parent_code not in visited:
+        visited.add(current.code)
+        active_root_code = current.parent_code
+        current = code_map.get(current.parent_code)
+
+    main_menu = []
+    for item in child_map.get("", []):
+        if not item.is_active:
+            continue
+        main_menu.append(
+            {
+                "code": item.code,
+                "name": item.name,
+                "href": item.route_path or "#",
+                "active": item.code == active_root_code,
+            }
+        )
+
+    sub_menu = []
+    for item in child_map.get(active_root_code, []):
+        if not item.is_active:
+            continue
+        sub_menu.append(
+            {
+                "code": item.code,
+                "name": item.name,
+                "href": item.route_path or "#",
+                "active": item.code == active,
+            }
+        )
+
+    section_title = code_map.get(active_root_code).name if active_root_code in code_map else ""
+    if not main_menu:
+        return _fallback_navigation(active)
+    return main_menu, sub_menu, section_title
+
+
+
 def render_page(title: str, active: str, content: str, quick_links: list[dict[str, str]] | None = None) -> str:
+    main_menu, sub_menu, section_title = get_navigation(active)
+    if quick_links:
+        sub_menu = quick_links
     return render_template_string(
         BASE_HTML,
         title=title,
         active=active,
         content=content,
-        quick_links=quick_links or [],
+        quick_links=sub_menu,
+        main_menu=main_menu,
+        section_title=section_title,
     )
 
 

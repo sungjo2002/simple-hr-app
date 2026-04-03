@@ -1,3 +1,4 @@
+
 from models import (
     AdminMenu,
     AdminPage,
@@ -15,69 +16,110 @@ from models import (
 from utils import today_str
 
 
-
-
-def _seed_admin_defaults() -> None:
+def _seed_ui_defaults() -> None:
     menu_defaults = [
-        ("admin_dashboard", "관리자홈", "", "/admin", 1),
-        ("admin_menu", "메뉴관리", "", "/admin/menus", 2),
-        ("admin_page", "화면관리", "", "/admin/pages", 3),
-        ("admin_label", "문구관리", "", "/admin/labels", 4),
-        ("admin_log", "관리로그", "", "/admin/logs", 5),
+        ("home", "홈", "", "/", 1),
+        ("employees", "직원관리", "", "/employees", 2),
+        ("attendance", "근태관리", "", "/attendance", 3),
+        ("company", "회사관리", "", "/client-companies", 4),
+        ("our_businesses", "사업자관리", "company", "/our-businesses", 1),
+        ("client_companies", "거래처관리", "company", "/client-companies", 2),
+        ("payroll", "급여관리", "", "/payroll", 5),
+        ("records", "기록조회", "", "/records", 6),
+        ("settings", "설정", "", "/settings", 7),
+        ("admin", "관리자", "", "/admin", 8),
+        ("admin_home", "관리자 홈", "admin", "/admin", 1),
+        ("admin_menus", "메뉴관리", "admin", "/admin/menus", 2),
+        ("admin_labels", "문구관리", "admin", "/admin/labels", 3),
     ]
     for code, name, parent_code, route_path, sort_order in menu_defaults:
         item = AdminMenu.query.filter_by(code=code).first()
         if item is None:
-            item = AdminMenu(
-                code=code,
-                name=name,
-                parent_code=parent_code,
-                route_path=route_path,
-                sort_order=sort_order,
-                is_active=True,
+            db.session.add(
+                AdminMenu(
+                    code=code,
+                    name=name,
+                    parent_code=parent_code,
+                    route_path=route_path,
+                    sort_order=sort_order,
+                    is_active=True,
+                )
             )
-            db.session.add(item)
 
     page_defaults = [
-        ("admin_dashboard", "관리자홈", "/admin", "admin", "관리자 운영 현황 대시보드"),
+        ("home", "홈", "/", "main", "홈 대시보드"),
+        ("employees", "직원관리", "/employees", "main", "직원 목록과 등록"),
+        ("attendance", "근태관리", "/attendance", "main", "출퇴근 및 상태 관리"),
+        ("client_companies", "거래처관리", "/client-companies", "main", "거래처 관리"),
+        ("our_businesses", "사업자관리", "/our-businesses", "main", "우리 사업자 관리"),
+        ("payroll", "급여관리", "/payroll", "main", "급여 계산 및 요약"),
+        ("records", "기록조회", "/records", "main", "기록 조회"),
+        ("settings", "설정", "/settings", "main", "기본 설정"),
+        ("admin_home", "관리자 홈", "/admin", "admin", "관리자 운영 현황 대시보드"),
         ("menu_management", "메뉴관리", "/admin/menus", "admin", "메뉴 구조와 링크 관리"),
-        ("page_management", "화면관리", "/admin/pages", "admin", "페이지 연결과 확장 관리"),
         ("label_management", "문구관리", "/admin/labels", "admin", "메뉴명, 제목, 버튼명 관리"),
-        ("admin_logs", "관리로그", "/admin/logs", "admin", "변경 이력과 작업 로그 관리"),
     ]
     for page_key, page_name, route_path, category, description in page_defaults:
         item = AdminPage.query.filter_by(page_key=page_key).first()
         if item is None:
-            item = AdminPage(
-                page_key=page_key,
-                page_name=page_name,
-                route_path=route_path,
-                category=category,
-                description=description,
-                is_active=True,
+            db.session.add(
+                AdminPage(
+                    page_key=page_key,
+                    page_name=page_name,
+                    route_path=route_path,
+                    category=category,
+                    description=description,
+                    is_active=True,
+                )
             )
-            db.session.add(item)
 
     label_defaults = [
-        ("menu_admin", "관리자", "menu", "상단 관리자 메뉴명"),
-        ("admin_dashboard_title", "관리자 홈", "admin", "관리자 대시보드 제목"),
+        ("home_page_title", "홈", "page", "브라우저 타이틀과 홈 제목"),
+        ("home_hero_title", "오늘의 인력 운영 상황을 한 번에 확인하세요", "home", "홈 상단 대표 제목"),
+        ("home_hero_description", "상태 카드와 검색, 거래처 필터를 한 흐름으로 확인할 수 있습니다.", "home", "홈 상단 설명"),
+        ("home_notice_text", "홈 화면은 요약 중심으로, 근태·직원·기록 기능은 상단 메뉴에서 분리해 중복 느낌을 줄였습니다.", "home", "홈 안내 문구"),
+        ("home_filter_apply_button", "조회 적용", "button", "홈 조회 버튼"),
+        ("home_filter_reset_button", "전체 초기화", "button", "홈 초기화 버튼"),
+        ("home_search_panel_title", "사원검색", "home", "홈 검색 패널 제목"),
+        ("home_search_panel_description", "이름 검색과 상세 선택 흐름을 간단하게 유지합니다.", "home", "홈 검색 패널 설명"),
+        ("home_card_total", "전체", "dashboard_card", "홈 전체 카드 제목"),
+        ("home_card_before_work", "출근전", "dashboard_card", "홈 출근전 카드 제목"),
+        ("home_card_working", "근무중", "dashboard_card", "홈 근무중 카드 제목"),
+        ("home_card_completed", "퇴근완료", "dashboard_card", "홈 퇴근완료 카드 제목"),
+        ("home_card_hospital", "병원", "dashboard_card", "홈 병원 카드 제목"),
+        ("home_card_absent", "결근", "dashboard_card", "홈 결근 카드 제목"),
+        ("admin_home_title", "관리자 홈", "admin", "관리자 홈 제목"),
+        ("admin_home_description", "홈페이지처럼 한눈에 보는 운영 현황과 1단계 관리 기능 진입 화면입니다.", "admin", "관리자 홈 설명"),
         ("admin_menu_title", "메뉴관리", "admin", "메뉴관리 화면 제목"),
-        ("admin_page_title", "화면관리", "admin", "화면관리 화면 제목"),
+        ("admin_menu_description", "상단 메뉴명, 순서, 노출 여부, 상하위 메뉴, URL을 수정합니다.", "admin", "메뉴관리 설명"),
         ("admin_label_title", "문구관리", "admin", "문구관리 화면 제목"),
+        ("admin_label_description", "페이지 제목, 버튼 문구, 안내 문구, 카드 제목을 수정합니다.", "admin", "문구관리 설명"),
+        ("admin_card_businesses", "사업자", "dashboard_card", "관리자 카드 제목"),
+        ("admin_card_clients", "거래처", "dashboard_card", "관리자 카드 제목"),
+        ("admin_card_employees", "직원", "dashboard_card", "관리자 카드 제목"),
+        ("admin_card_menus", "메뉴", "dashboard_card", "관리자 카드 제목"),
+        ("admin_card_labels", "문구", "dashboard_card", "관리자 카드 제목"),
+        ("button_save", "저장", "button", "공통 저장 버튼"),
+        ("button_add", "추가", "button", "공통 추가 버튼"),
     ]
     for label_key, label_text, category, description in label_defaults:
         item = UiLabel.query.filter_by(label_key=label_key).first()
         if item is None:
-            item = UiLabel(
-                label_key=label_key,
-                label_text=label_text,
-                category=category,
-                description=description,
-                is_active=True,
+            db.session.add(
+                UiLabel(
+                    label_key=label_key,
+                    label_text=label_text,
+                    category=category,
+                    description=description,
+                    is_active=True,
+                )
             )
-            db.session.add(item)
+
 
 def seed_database() -> None:
+    _seed_ui_defaults()
+    db.session.commit()
+
     if OurBusiness.query.first():
         return
 
@@ -106,7 +148,6 @@ def seed_database() -> None:
         memo="",
     )
     db.session.add_all([our1, our2])
-    _seed_admin_defaults()
     db.session.commit()
 
     clients = [
