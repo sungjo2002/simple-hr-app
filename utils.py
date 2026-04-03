@@ -605,23 +605,16 @@ BASE_HTML = """
     </div>
     <div class="menu-shell">
         <div class="menu">
-            <a href="/" class="{{ 'active' if active=='home' else '' }}">홈</a>
-            <a href="/employees" class="{{ 'active' if active=='employees' else '' }}">직원관리</a>
+            <a href="/" class="{{ 'active' if active=='home' else '' }}">대시보드</a>
+            <a href="/employees" class="{{ 'active' if active=='employees' else '' }}">인력관리</a>
             <a href="/attendance" class="{{ 'active' if active=='attendance' else '' }}">근태관리</a>
-            <a href="/client-companies" class="{{ 'active' if active in ['client_companies', 'our_businesses'] else '' }}">회사관리</a>
+            <a href="/client-companies" class="{{ 'active' if active in ['client_companies', 'our_businesses'] else '' }}">거래처·사업장</a>
             <a href="/payroll" class="{{ 'active' if active=='payroll' else '' }}">급여관리</a>
             <a href="/records" class="{{ 'active' if active=='records' else '' }}">기록조회</a>
             <a href="/settings" class="{{ 'active' if active=='settings' else '' }}">설정</a>
         </div>
-        {% if active in ['client_companies', 'our_businesses'] %}
+        {% if quick_links %}
         <div class="quickbar">
-            <span class="section-chip">회사관리</span>
-            <a href="/our-businesses" class="{{ 'active' if active == 'our_businesses' else '' }}">사업자관리</a>
-            <a href="/client-companies" class="{{ 'active' if active == 'client_companies' else '' }}">거래처관리</a>
-        </div>
-        {% elif quick_links %}
-        <div class="quickbar">
-            <span class="section-chip">{{ title }}</span>
             {% for item in quick_links %}
                 <a href="{{ item.href }}" class="{{ 'active' if item.get('active') else '' }}">{{ item.label }}</a>
             {% endfor %}

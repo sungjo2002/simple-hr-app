@@ -338,4 +338,4 @@ def home() -> str:
         </div>
     </div>
     """
-    return render_page("홈", "home", content)
+    return render_page("대시보드", "home", content)
