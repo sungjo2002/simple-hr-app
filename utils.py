@@ -4,7 +4,7 @@ from calendar import monthrange
 from datetime import date, datetime
 from typing import Any
 
-from flask import render_template_string
+from flask import Response, render_template, render_template_string
 
 from models import AttendanceRecord, ClientCompany, ClientCompanyPayrollSetting, ClientCompanySetting, ClientCompanyWorkType, Employee, EmployeeDocument, OurBusiness, db
 
@@ -586,6 +586,72 @@ BASE_HTML = """
         .panel-head { flex-direction:column; align-items:flex-start; }
         .panel-head-actions { width:100%; justify-content:flex-start; }
     }
+
+    .list-toolbar {
+        display:flex;
+        gap:12px;
+        justify-content:space-between;
+        align-items:flex-end;
+        flex-wrap:wrap;
+        margin:0 0 16px;
+        padding:14px;
+        border:1px solid #dbe4ef;
+        border-radius:16px;
+        background:#f8fbff;
+    }
+    .toolbar-form {
+        display:flex;
+        gap:10px;
+        flex-wrap:wrap;
+        align-items:end;
+        flex:1 1 720px;
+    }
+    .toolbar-form > div { min-width:140px; }
+    .toolbar-search { flex:1 1 260px; min-width:220px; }
+    .toolbar-actions, .toolbar-side-actions {
+        display:flex;
+        gap:8px;
+        flex-wrap:wrap;
+        align-items:center;
+    }
+    .toolbar-side-actions { justify-content:flex-end; }
+    .pagination-wrap {
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap:12px;
+        flex-wrap:wrap;
+        margin-top:16px;
+    }
+    .pagination {
+        display:flex;
+        gap:8px;
+        flex-wrap:wrap;
+    }
+    .pagination-link {
+        display:inline-flex;
+        align-items:center;
+        justify-content:center;
+        min-width:38px;
+        height:38px;
+        border-radius:10px;
+        border:1px solid var(--line);
+        background:#fff;
+        color:var(--text);
+        text-decoration:none;
+        font-weight:700;
+    }
+    .pagination-link.active {
+        background:var(--primary);
+        color:#fff;
+        border-color:var(--primary);
+    }
+    .table-meta {
+        font-size:13px;
+        color:var(--muted);
+        font-weight:700;
+    }
+
 </style>
 </head>
 <body>
@@ -705,6 +771,131 @@ def render_page(title: str, active: str, content: str, quick_links: list[dict[st
         content=content,
         quick_links=quick_links or [],
     )
+
+
+def sort_items(items: list[Any], sort_key: str, sort_funcs: dict[str, Any], direction: str = "asc") -> list[Any]:
+    key_func = sort_funcs.get(sort_key) or next(iter(sort_funcs.values()))
+    reverse = direction == "desc"
+    return sorted(items, key=key_func, reverse=reverse)
+
+
+def paginate_items(items: list[Any], page: int, per_page: int) -> tuple[list[Any], int, int]:
+    total_count = len(items)
+    total_pages = max(1, (total_count + per_page - 1) // per_page)
+    page = min(max(page, 1), total_pages)
+    start = (page - 1) * per_page
+    end = start + per_page
+    return items[start:end], total_count, total_pages
+
+
+def update_query_params(params: dict[str, Any], **changes: Any) -> str:
+    merged = {key: value for key, value in params.items() if value not in (None, "", [])}
+    for key, value in changes.items():
+        if value in (None, ""):
+            merged.pop(key, None)
+        else:
+            merged[key] = value
+    from urllib.parse import urlencode
+    query = urlencode(merged)
+    return f"?{query}" if query else ""
+
+
+def render_table_toolbar(
+    *,
+    base_path: str,
+    current_params: dict[str, Any],
+    search_placeholder: str,
+    search_value: str,
+    sort_options: list[tuple[str, str]],
+    current_sort: str,
+    current_direction: str,
+    create_href: str | None = None,
+    create_label: str | None = None,
+    reset_href: str | None = None,
+) -> str:
+    sort_option_html = "".join(
+        f'<option value="{value}" {"selected" if value == current_sort else ""}>{label}</option>'
+        for value, label in sort_options
+    )
+    export_csv_href = f"{base_path}{update_query_params(current_params, export='csv', page=1)}"
+    export_xlsx_href = f"{base_path}{update_query_params(current_params, export='xlsx', page=1)}"
+    create_html = f'<a class="btn btn-primary" href="{create_href}">{create_label}</a>' if create_href and create_label else ""
+    reset_html = f'<a class="btn btn-white" href="{reset_href or base_path}">초기화</a>'
+    return f"""
+    <div class="list-toolbar">
+        <form method="get" class="toolbar-form">
+            <div class="toolbar-search"><label>검색</label><input type="text" name="q" value="{search_value}" placeholder="{search_placeholder}"></div>
+            <div><label>정렬</label><select name="sort">{sort_option_html}</select></div>
+            <div><label>방향</label><select name="direction"><option value="asc" {"selected" if current_direction == "asc" else ""}>오름차순</option><option value="desc" {"selected" if current_direction == "desc" else ""}>내림차순</option></select></div>
+            <input type="hidden" name="page" value="1">
+            <div class="toolbar-actions"><button class="btn btn-white" type="submit">적용</button>{reset_html}</div>
+        </form>
+        <div class="toolbar-side-actions">
+            <a class="btn btn-white" href="{export_csv_href}">CSV 내보내기</a>
+            <a class="btn btn-white" href="{export_xlsx_href}">Excel 내보내기</a>
+            {create_html}
+        </div>
+    </div>
+    """
+
+
+def render_pagination(base_path: str, current_params: dict[str, Any], page: int, total_pages: int, total_count: int) -> str:
+    if total_pages <= 1:
+        return f'<div class="table-meta">총 {total_count}건</div>'
+    links: list[str] = []
+    for target_page in range(1, total_pages + 1):
+        css = "pagination-link active" if target_page == page else "pagination-link"
+        href = f"{base_path}{update_query_params(current_params, page=target_page)}"
+        links.append(f'<a class="{css}" href="{href}">{target_page}</a>')
+    return f"""
+    <div class="pagination-wrap">
+        <div class="table-meta">총 {total_count}건 · {page}/{total_pages} 페이지</div>
+        <div class="pagination">{''.join(links)}</div>
+    </div>
+    """
+
+
+def build_csv_response(filename: str, headers: list[str], rows: list[list[Any]]) -> Response:
+    import csv
+    import io
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(headers)
+    writer.writerows(rows)
+    data = buffer.getvalue()
+    return Response(
+        data,
+        mimetype="text/csv; charset=utf-8-sig",
+        headers={"Content-Disposition": f'attachment; filename="{filename}.csv"'},
+    )
+
+
+def build_excel_response(filename: str, sheet_name: str, headers: list[str], rows: list[list[Any]]) -> Response:
+    from io import BytesIO
+    from openpyxl import Workbook
+
+    workbook = Workbook()
+    worksheet = workbook.active
+    worksheet.title = sheet_name[:31] or "Sheet1"
+    worksheet.append(headers)
+    for row in rows:
+        worksheet.append(row)
+    output = BytesIO()
+    workbook.save(output)
+    output.seek(0)
+    return Response(
+        output.getvalue(),
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}.xlsx"'},
+    )
+
+
+def export_table(filename: str, sheet_name: str, headers: list[str], rows: list[list[Any]], export_format: str) -> Response | None:
+    if export_format == "csv":
+        return build_csv_response(filename, headers, rows)
+    if export_format == "xlsx":
+        return build_excel_response(filename, sheet_name, headers, rows)
+    return None
 
 
 def get_our_business(our_business_id: int) -> OurBusiness | None:

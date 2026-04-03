@@ -1,15 +1,49 @@
 from flask import Blueprint, redirect, request, url_for
 
 from models import ClientCompany, OurBusiness, db
-from utils import render_page, today_str
+from utils import export_table, paginate_items, render_page, render_pagination, render_table_toolbar, sort_items, today_str
 
 businesses_bp = Blueprint("businesses", __name__)
 
 
 @businesses_bp.route("/our-businesses")
 def our_businesses_page() -> str:
+    q = request.args.get("q", "").strip()
+    sort = request.args.get("sort", "id")
+    direction = request.args.get("direction", "asc")
+    page_raw = request.args.get("page", "1")
+    export_format = request.args.get("export", "").strip().lower()
+    page = int(page_raw) if page_raw.isdigit() else 1
+
+    items = OurBusiness.query.order_by(OurBusiness.id.asc()).all()
+    if q:
+        q_lower = q.lower()
+        items = [
+            item for item in items
+            if q_lower in item.name.lower()
+            or q_lower in item.business_number.lower()
+            or q_lower in item.phone.lower()
+            or q_lower in item.ceo_name.lower()
+        ]
+
+    sort_funcs = {
+        "id": lambda item: item.id,
+        "name": lambda item: item.name.lower(),
+        "business_number": lambda item: item.business_number,
+        "phone": lambda item: item.phone,
+        "is_active": lambda item: item.is_active,
+    }
+    items = sort_items(items, sort, sort_funcs, direction)
+
+    export_headers = ["번호", "사업자명", "사업자등록번호", "대표전화", "사용여부"]
+    export_rows = [[item.id, item.name, item.business_number, item.phone, "사용" if item.is_active else "미사용"] for item in items]
+    export_response = export_table("our_businesses", "사업자목록", export_headers, export_rows, export_format)
+    if export_response:
+        return export_response
+
+    paged_items, total_count, total_pages = paginate_items(items, page, 10)
     rows = ""
-    for item in OurBusiness.query.order_by(OurBusiness.id.asc()).all():
+    for item in paged_items:
         rows += f"""
         <tr>
             <td>{item.id}</td>
@@ -19,15 +53,31 @@ def our_businesses_page() -> str:
             <td>{"사용" if item.is_active else "미사용"}</td>
         </tr>
         """
+
+    current_params = {"q": q, "sort": sort, "direction": direction}
+    toolbar = render_table_toolbar(
+        base_path="/our-businesses",
+        current_params=current_params,
+        search_placeholder="사업자명, 등록번호, 대표전화 검색",
+        search_value=q,
+        sort_options=[("id", "번호"), ("name", "사업자명"), ("business_number", "사업자등록번호"), ("phone", "대표전화"), ("is_active", "사용여부")],
+        current_sort=sort,
+        current_direction=direction,
+        create_href="/our-businesses/new",
+        create_label="+ 사업자등록",
+        reset_href="/our-businesses",
+    )
+    pagination = render_pagination("/our-businesses", current_params, page, total_pages, total_count)
     content = f"""
     <div class="panel">
         <div class="panel-head"><h2>사업자목록</h2><p>우리측 운영 사업자 관리</p></div>
         <div class="panel-body">
-            <div class="actions" style="margin-top:0; margin-bottom:16px;"><a class="btn btn-primary" href="/our-businesses/new">+ 사업자등록</a></div>
+            {toolbar}
             <table>
                 <thead><tr><th>번호</th><th>사업자명</th><th>사업자등록번호</th><th>대표전화</th><th>사용여부</th></tr></thead>
                 <tbody>{rows or '<tr><td colspan="5">데이터가 없습니다.</td></tr>'}</tbody>
             </table>
+            {pagination}
         </div>
     </div>
     """

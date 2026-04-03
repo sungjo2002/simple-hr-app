@@ -1,7 +1,28 @@
 from flask import Blueprint, redirect, request, url_for
 
 from models import ClientCompany, Employee, EmployeeDocument, db
-from utils import DOCUMENT_TYPE_LABELS, PAY_TYPE_LABELS, get_client_company_name, get_employee, get_employee_documents, get_employees_by_client_company, get_our_business_name, get_today_status, get_work_type_name, render_client_company_options, render_our_business_options, render_page, render_work_type_options, status_badge, today_str
+from utils import (
+    DOCUMENT_TYPE_LABELS,
+    PAY_TYPE_LABELS,
+    export_table,
+    get_client_company_name,
+    get_employee,
+    get_employee_documents,
+    get_employees_by_client_company,
+    get_our_business_name,
+    get_today_status,
+    get_work_type_name,
+    paginate_items,
+    render_client_company_options,
+    render_our_business_options,
+    render_page,
+    render_pagination,
+    render_table_toolbar,
+    render_work_type_options,
+    sort_items,
+    status_badge,
+    today_str,
+)
 
 employees_bp = Blueprint("employees", __name__)
 
@@ -10,9 +31,60 @@ employees_bp = Blueprint("employees", __name__)
 def employees_page() -> str:
     client_company_raw = request.args.get("client_company_id", "")
     client_company_id = int(client_company_raw) if client_company_raw.isdigit() else None
+    q = request.args.get("q", "").strip()
+    sort = request.args.get("sort", "id")
+    direction = request.args.get("direction", "asc")
+    page_raw = request.args.get("page", "1")
+    export_format = request.args.get("export", "").strip().lower()
+    page = int(page_raw) if page_raw.isdigit() else 1
 
+    items = get_employees_by_client_company(client_company_id)
+    if q:
+        q_lower = q.lower()
+        items = [
+            employee for employee in items
+            if q_lower in employee.name.lower()
+            or q_lower in employee.nationality.lower()
+            or q_lower in get_our_business_name(employee.our_business_id).lower()
+            or q_lower in get_client_company_name(employee.current_client_company_id).lower()
+            or q_lower in get_work_type_name(employee.work_type_id).lower()
+            or q_lower in PAY_TYPE_LABELS.get(employee.pay_type, "-").lower()
+            or q_lower in get_today_status(employee.id).lower()
+        ]
+
+    sort_funcs = {
+        "id": lambda employee: employee.id,
+        "name": lambda employee: employee.name.lower(),
+        "nationality": lambda employee: employee.nationality.lower(),
+        "our_business": lambda employee: get_our_business_name(employee.our_business_id).lower(),
+        "client_company": lambda employee: get_client_company_name(employee.current_client_company_id).lower(),
+        "work_type": lambda employee: get_work_type_name(employee.work_type_id).lower(),
+        "pay_type": lambda employee: PAY_TYPE_LABELS.get(employee.pay_type, "-"),
+        "status": lambda employee: get_today_status(employee.id),
+    }
+    items = sort_items(items, sort, sort_funcs, direction)
+
+    export_headers = ["번호", "이름", "국적", "사업자", "거래처", "근무타입", "급여형태", "오늘 상태"]
+    export_rows = [
+        [
+            employee.id,
+            employee.name,
+            employee.nationality,
+            get_our_business_name(employee.our_business_id),
+            get_client_company_name(employee.current_client_company_id),
+            get_work_type_name(employee.work_type_id),
+            PAY_TYPE_LABELS.get(employee.pay_type, "-"),
+            get_today_status(employee.id),
+        ]
+        for employee in items
+    ]
+    export_response = export_table("employees", "인력목록", export_headers, export_rows, export_format)
+    if export_response:
+        return export_response
+
+    paged_items, total_count, total_pages = paginate_items(items, page, 10)
     rows = ""
-    for employee in get_employees_by_client_company(client_company_id):
+    for employee in paged_items:
         rows += f"""
         <tr>
             <td>{employee.id}</td>
@@ -31,11 +103,29 @@ def employees_page() -> str:
         selected = "selected" if item.id == client_company_id else ""
         filter_options.append(f'<option value="{item.id}" {selected}>{item.name}</option>')
 
+    current_params = {"client_company_id": client_company_raw, "q": q, "sort": sort, "direction": direction}
+    toolbar = render_table_toolbar(
+        base_path="/employees",
+        current_params=current_params,
+        search_placeholder="이름, 국적, 사업자, 거래처, 근무타입 검색",
+        search_value=q,
+        sort_options=[("id", "번호"), ("name", "이름"), ("nationality", "국적"), ("our_business", "사업자"), ("client_company", "거래처"), ("work_type", "근무타입"), ("pay_type", "급여형태"), ("status", "오늘 상태")],
+        current_sort=sort,
+        current_direction=direction,
+        create_href="/employees/new",
+        create_label="인력등록",
+        reset_href="/employees",
+    ).replace('<input type="hidden" name="page" value="1">', f'<input type="hidden" name="page" value="1"><input type="hidden" name="client_company_id" value="{client_company_raw}">')
+
+    pagination = render_pagination("/employees", current_params, page, total_pages, total_count)
     content = f"""
     <div class="panel" style="margin-bottom:18px;">
         <div class="panel-body">
             <form method="get" class="actions" style="margin-top:0;">
-                <div style="min-width:260px;"><label>거래처 필터</label><select name="client_company_id">{"".join(filter_options)}</select></div>
+                <div style="min-width:260px;"><label>거래처 필터</label><select name="client_company_id">{''.join(filter_options)}</select></div>
+                <input type="hidden" name="q" value="{q}">
+                <input type="hidden" name="sort" value="{sort}">
+                <input type="hidden" name="direction" value="{direction}">
                 <div><button class="btn btn-white" type="submit">조회</button></div>
                 <div><a class="btn btn-white" href="/employees">초기화</a></div>
             </form>
@@ -44,11 +134,12 @@ def employees_page() -> str:
     <div class="panel">
         <div class="panel-head"><h2>인력목록</h2><p>사업자 / 거래처 / 근무타입 기준 관리</p></div>
         <div class="panel-body">
-            <div class="actions" style="margin-top:0; margin-bottom:16px;"><a class="btn btn-primary" href="/employees/new">인력등록</a></div>
+            {toolbar}
             <table>
                 <thead><tr><th>번호</th><th>이름</th><th>국적</th><th>사업자</th><th>거래처</th><th>근무타입</th><th>급여형태</th><th>오늘 상태</th></tr></thead>
                 <tbody>{rows or '<tr><td colspan="8">인력이 없습니다.</td></tr>'}</tbody>
             </table>
+            {pagination}
         </div>
     </div>
     """

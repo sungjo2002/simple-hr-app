@@ -1,15 +1,62 @@
 from flask import Blueprint, redirect, request, url_for
 
 from models import ClientCompany, ClientCompanyPayrollSetting, ClientCompanySetting, ClientCompanyWorkType, Employee, db
-from utils import get_client_company, get_client_company_name, get_client_company_work_types, get_our_business_name, render_our_business_options, render_page, today_str
+from utils import (
+    export_table,
+    get_client_company,
+    get_client_company_work_types,
+    get_our_business_name,
+    paginate_items,
+    render_our_business_options,
+    render_page,
+    render_pagination,
+    render_table_toolbar,
+    sort_items,
+    today_str,
+)
 
 clients_bp = Blueprint("clients", __name__)
 
 
 @clients_bp.route("/client-companies")
 def client_companies_page() -> str:
+    q = request.args.get("q", "").strip()
+    sort = request.args.get("sort", "id")
+    direction = request.args.get("direction", "asc")
+    page_raw = request.args.get("page", "1")
+    export_format = request.args.get("export", "").strip().lower()
+    page = int(page_raw) if page_raw.isdigit() else 1
+
+    items = ClientCompany.query.order_by(ClientCompany.id.asc()).all()
+    if q:
+        q_lower = q.lower()
+        items = [
+            item for item in items
+            if q_lower in item.name.lower()
+            or q_lower in item.business_number.lower()
+            or q_lower in item.phone.lower()
+            or q_lower in get_our_business_name(item.our_business_id).lower()
+        ]
+
+    sort_funcs = {
+        "id": lambda item: item.id,
+        "our_business": lambda item: get_our_business_name(item.our_business_id).lower(),
+        "name": lambda item: item.name.lower(),
+        "business_number": lambda item: item.business_number,
+        "phone": lambda item: item.phone,
+        "is_active": lambda item: item.is_active,
+    }
+    items = sort_items(items, sort, sort_funcs, direction)
+
+    export_headers = ["번호", "사업자", "거래처명", "사업자등록번호", "대표전화", "사용여부"]
+    export_rows = [[item.id, get_our_business_name(item.our_business_id), item.name, item.business_number, item.phone, "사용" if item.is_active else "미사용"] for item in items]
+    export_response = export_table("client_companies", "거래처목록", export_headers, export_rows, export_format)
+    if export_response:
+        return export_response
+
+    paged_items, total_count, total_pages = paginate_items(items, page, 10)
     rows = ""
-    for item in ClientCompany.query.order_by(ClientCompany.id.asc()).all():
+    for item in paged_items:
         rows += f"""
         <tr>
             <td>{item.id}</td>
@@ -20,15 +67,31 @@ def client_companies_page() -> str:
             <td>{"사용" if item.is_active else "미사용"}</td>
         </tr>
         """
+
+    current_params = {"q": q, "sort": sort, "direction": direction}
+    toolbar = render_table_toolbar(
+        base_path="/client-companies",
+        current_params=current_params,
+        search_placeholder="거래처명, 사업자, 등록번호, 대표전화 검색",
+        search_value=q,
+        sort_options=[("id", "번호"), ("our_business", "사업자"), ("name", "거래처명"), ("business_number", "사업자등록번호"), ("phone", "대표전화"), ("is_active", "사용여부")],
+        current_sort=sort,
+        current_direction=direction,
+        create_href="/client-companies/new",
+        create_label="+ 거래처등록",
+        reset_href="/client-companies",
+    )
+    pagination = render_pagination("/client-companies", current_params, page, total_pages, total_count)
     content = f"""
     <div class="panel">
         <div class="panel-head"><h2>거래처목록</h2><p>사업자 소속 거래처 사업자 관리</p></div>
         <div class="panel-body">
-            <div class="actions" style="margin-top:0; margin-bottom:16px;"><a class="btn btn-primary" href="/client-companies/new">+ 거래처등록</a></div>
+            {toolbar}
             <table>
                 <thead><tr><th>번호</th><th>사업자</th><th>거래처명</th><th>사업자등록번호</th><th>대표전화</th><th>사용여부</th></tr></thead>
                 <tbody>{rows or '<tr><td colspan="6">데이터가 없습니다.</td></tr>'}</tbody>
             </table>
+            {pagination}
         </div>
     </div>
     """
