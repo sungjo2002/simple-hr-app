@@ -52,7 +52,7 @@ def attendance_page() -> str:
 
     content = f"""
     <div class="content-grid">
-        <div class="panel">
+        <div class="panel" id="attendance-table">
             <div class="panel-head"><h2>오늘 출퇴현황</h2><p>선택 날짜: <strong>{selected_date}</strong></p></div>
             <div class="panel-body">
                 <form method="get" class="actions" style="margin-top:0; margin-bottom:16px;">
@@ -89,5 +89,9 @@ def attendance_page() -> str:
         </div>
     </div>
     """
-    quick = [{"label": "오늘근태", "href": "/attendance"}, {"label": "근태조회", "href": "/records?tab=all"}, {"label": "월별현황", "href": "/records?tab=monthly"}]
+    quick = [
+        {"label": "오늘근태", "href": "/attendance", "active": True},
+        {"label": "출근처리", "href": "/attendance#attendance-form", "active": False},
+        {"label": "상태변경", "href": "/attendance#attendance-table", "active": False},
+    ]
     return render_page("근태관리", "attendance", content, quick)

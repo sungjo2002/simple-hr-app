@@ -32,7 +32,7 @@ def client_companies_page() -> str:
         </div>
     </div>
     """
-    quick = [{"label": "거래처목록", "href": "/client-companies"}, {"label": "거래처등록", "href": "/client-companies/new"}]
+    quick = [{"label": "거래처목록", "href": "/client-companies", "active": True}, {"label": "거래처등록", "href": "/client-companies/new", "active": False}]
     return render_page("거래처관리", "client_companies", content, quick)
 
 
@@ -88,7 +88,7 @@ def client_company_new() -> str:
         </div>
     </div>
     """
-    quick = [{"label": "거래처목록", "href": "/client-companies"}, {"label": "거래처등록", "href": "/client-companies/new"}]
+    quick = [{"label": "거래처목록", "href": "/client-companies", "active": False}, {"label": "거래처등록", "href": "/client-companies/new", "active": True}]
     return render_page("거래처등록", "client_companies", content, quick)
 
 
@@ -121,5 +121,5 @@ def client_company_detail(client_company_id: int) -> str:
         </div>
     </div>
     """
-    quick = [{"label": "거래처목록", "href": "/client-companies"}, {"label": "거래처등록", "href": "/client-companies/new"}]
+    quick = [{"label": "거래처목록", "href": "/client-companies", "active": True}, {"label": "거래처등록", "href": "/client-companies/new", "active": False}]
     return render_page("거래처상세", "client_companies", content, quick)

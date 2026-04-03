@@ -8,11 +8,11 @@ settings_bp = Blueprint("settings", __name__)
 @settings_bp.route("/settings")
 def settings_page() -> str:
     content = """
-    <div class="panel">
+    <div class="panel" id="system-config">
         <div class="panel-head"><h2>설정</h2><p>권한 / 문서 / 운영 기준</p></div>
         <div class="panel-body">
             <table>
-                <tr><th style="width:220px;">저장 방식</th><td>SQLite DB 파일 저장</td></tr>
+                <tr><th style="width:220px;">저장 방식</th><td>로컬 SQLite / 배포 PostgreSQL 연동</td></tr>
                 <tr><th>최고관리자</th><td>웹 사용 가능 / 앱 사용 가능 / 민감 문서 열람 가능</td></tr>
                 <tr><th>부관리자</th><td>앱만 사용 가능 / 출퇴근 처리 / 기록 조회</td></tr>
                 <tr><th>직원</th><td>앱 조회 중심 / 직접 출퇴근 불가</td></tr>
@@ -23,4 +23,7 @@ def settings_page() -> str:
         </div>
     </div>
     """
-    return render_page("설정", "settings", content, [{"label": "사용자관리", "href": "/settings"}, {"label": "시스템설정", "href": "/settings"}])
+    return render_page("설정", "settings", content, [
+        {"label": "사용자관리", "href": "/settings", "active": True},
+        {"label": "시스템설정", "href": "/settings#system-config", "active": False},
+    ])

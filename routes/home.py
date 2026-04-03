@@ -113,7 +113,7 @@ def home() -> str:
         rows += f"""
         <tr{row_style}>
             <td>{employee.id}</td>
-            <td><a class="js-keep-scroll" href="{detail_href}#worker-section">{escape(employee.name)}</a></td>
+            <td><a class="js-keep-scroll" href="{detail_href}">{escape(employee.name)}</a></td>
             <td>{escape(employee.nationality or "-")}</td>
             <td>{escape(get_our_business_name(employee.our_business_id))}</td>
             <td>{escape(get_client_company_name(employee.current_client_company_id))}</td>
@@ -203,7 +203,7 @@ def home() -> str:
     for key, label, value, note in card_defs:
         cards_html.append(
             f"""
-            <a class="card card-link js-keep-scroll {'active' if status_filter == key else ''}" href="{_home_url(current_date, client_company_id, employee_keyword, None, row_limit, key)}#worker-section">
+            <a class="card card-link js-keep-scroll {'active' if status_filter == key else ''}" href="{_home_url(current_date, client_company_id, employee_keyword, None, row_limit, key)}">
                 <div class="label">{label}</div>
                 <div class="value">{value}</div>
                 <div class="value-sub">{note}</div>

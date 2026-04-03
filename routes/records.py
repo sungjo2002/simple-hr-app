@@ -121,5 +121,8 @@ def records_page() -> str:
         </div>
         """
     content = f"{subtabs}{filter_form}{tab_content}"
-    quick = [{"label": "근태조회", "href": "/records?tab=all"}, {"label": "월별현황", "href": "/records?tab=monthly"}]
+    quick = [
+        {"label": "근태조회", "href": "/records?tab=all", "active": selected_tab == "all"},
+        {"label": "월별현황", "href": "/records?tab=monthly", "active": selected_tab == "monthly"},
+    ]
     return render_page("기록조회", "records", content, quick)

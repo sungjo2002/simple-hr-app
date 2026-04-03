@@ -31,7 +31,7 @@ def our_businesses_page() -> str:
         </div>
     </div>
     """
-    quick = [{"label": "사업자목록", "href": "/our-businesses"}, {"label": "사업자등록", "href": "/our-businesses/new"}]
+    quick = [{"label": "사업자목록", "href": "/our-businesses", "active": True}, {"label": "사업자등록", "href": "/our-businesses/new", "active": False}]
     return render_page("사업자관리", "our_businesses", content, quick)
 
 
@@ -78,7 +78,7 @@ def our_business_new() -> str:
         </div>
     </div>
     """
-    quick = [{"label": "사업자목록", "href": "/our-businesses"}, {"label": "사업자등록", "href": "/our-businesses/new"}]
+    quick = [{"label": "사업자목록", "href": "/our-businesses", "active": False}, {"label": "사업자등록", "href": "/our-businesses/new", "active": True}]
     return render_page("사업자등록", "our_businesses", content, quick)
 
 
@@ -106,5 +106,5 @@ def our_business_detail(our_business_id: int) -> str:
         </div>
     </div>
     """
-    quick = [{"label": "사업자목록", "href": "/our-businesses"}, {"label": "사업자등록", "href": "/our-businesses/new"}]
+    quick = [{"label": "사업자목록", "href": "/our-businesses", "active": True}, {"label": "사업자등록", "href": "/our-businesses/new", "active": False}]
     return render_page("사업자상세", "our_businesses", content, quick)

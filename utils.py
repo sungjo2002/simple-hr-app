@@ -92,15 +92,15 @@ BASE_HTML = """
     .topbar {
         background:linear-gradient(135deg,#10243a 0%,#173a63 52%,#1d4ed8 100%);
         color:white;
-        padding:20px 24px 24px;
+        padding:16px 20px 18px;
         box-shadow:0 16px 30px rgba(15, 23, 42, .18);
     }
     .topbar-inner {
-        width:min(100%, 1800px);
+        width:min(100%, 1280px);
         margin:0 auto;
         display:flex;
         flex-wrap:wrap;
-        gap:18px;
+        gap:14px;
         align-items:flex-end;
         justify-content:space-between;
     }
@@ -113,7 +113,7 @@ BASE_HTML = """
         font-weight:700;
     }
     .brand-title {
-        font-size:30px;
+        font-size:26px;
         line-height:1.15;
         font-weight:800;
         margin:0;
@@ -148,11 +148,11 @@ BASE_HTML = """
         border-bottom:1px solid rgba(203,213,225,.85);
     }
     .menu, .quickbar {
-        width:min(100%,1800px);
+        width:min(100%,1280px);
         margin:0 auto;
         display:flex;
         flex-wrap:wrap;
-        gap:18px;
+        gap:14px;
         align-items:center;
         padding:14px 20px;
     }
@@ -160,18 +160,25 @@ BASE_HTML = """
         text-decoration:none;
         color:#334155;
         font-weight:800;
-        font-size:15px;
-        padding:4px 0;
-        border-bottom:2px solid transparent;
-        transition:color .15s ease, border-color .15s ease;
+        font-size:14px;
+        padding:9px 12px;
+        border-radius:12px;
+        border:1px solid transparent;
+        transition:color .15s ease, border-color .15s ease, background-color .15s ease, box-shadow .15s ease;
     }
-    .menu a:hover,
+    .menu a:hover {
+        color:var(--primary);
+        background:#f8fbff;
+        border-color:#dbeafe;
+    }
     .menu a.active {
         color:var(--primary);
-        border-color:var(--primary);
+        background:linear-gradient(180deg,#f8fbff 0%, #eff6ff 100%);
+        border-color:#93c5fd;
+        box-shadow:0 10px 18px rgba(37,99,235,.10);
     }
     .quickbar {
-        gap:10px;
+        gap:8px;
         padding-top:10px;
         padding-bottom:12px;
         border-top:1px solid rgba(219,228,239,.7);
@@ -186,6 +193,18 @@ BASE_HTML = """
         font-weight:700;
         font-size:12px;
         box-shadow:var(--shadow-soft);
+        transition:background-color .15s ease, border-color .15s ease, color .15s ease, box-shadow .15s ease;
+    }
+    .quickbar a:hover {
+        border-color:#bfdbfe;
+        background:#f8fbff;
+        color:var(--primary);
+    }
+    .quickbar a.active {
+        background:linear-gradient(180deg,#eff6ff 0%, #dbeafe 100%);
+        color:var(--primary);
+        border-color:#93c5fd;
+        box-shadow:0 10px 18px rgba(37,99,235,.10);
     }
     .section-chip {
         background:var(--primary-soft);
@@ -193,13 +212,13 @@ BASE_HTML = """
         border-color:#bfdbfe;
     }
     .wrap {
-        width:min(100%,1800px);
+        width:min(100%,1220px);
         margin:0 auto;
-        padding:clamp(14px,2vw,22px);
+        padding:clamp(14px,2vw,20px);
     }
-    .cards {
+     .cards {
         display:grid;
-        grid-template-columns:repeat(auto-fit,minmax(180px,1fr));
+        grid-template-columns:repeat(auto-fit,minmax(160px,1fr));
         gap:16px;
         margin-bottom:20px;
     }
@@ -211,7 +230,7 @@ BASE_HTML = """
         min-width:0;
     }
     .card {
-        padding:18px;
+        padding:16px;
     }
     .card-link {
         display:block;
@@ -248,7 +267,7 @@ BASE_HTML = """
         font-weight:700;
     }
     .value {
-        font-size:34px;
+        font-size:30px;
         font-weight:800;
         letter-spacing:-0.03em;
     }
@@ -258,7 +277,7 @@ BASE_HTML = """
         margin-top:8px;
     }
     .panel-head {
-        padding:18px 20px;
+        padding:16px 18px;
         border-bottom:1px solid #e8eef5;
         display:flex;
         justify-content:space-between;
@@ -309,15 +328,15 @@ BASE_HTML = """
         white-space:nowrap;
         font-weight:700;
     }
-    .panel-body { padding:20px; }
-    .home-grid { display:grid; grid-template-columns:minmax(330px,390px) minmax(0,1fr); gap:18px; align-items:start; }
-    .content-grid { display:grid; grid-template-columns:minmax(0,1.35fr) minmax(340px,.85fr); gap:18px; align-items:start; }
+    .panel-body { padding:18px; }
+    .home-grid { display:grid; grid-template-columns:minmax(290px,340px) minmax(0,1fr); gap:16px; align-items:start; }
+    .content-grid { display:grid; grid-template-columns:minmax(0,1.3fr) minmax(300px,.8fr); gap:16px; align-items:start; }
     .two-col { display:grid; grid-template-columns:minmax(240px,280px) minmax(0,1fr); gap:18px; }
     .hero-panel {
         background:linear-gradient(180deg, rgba(255,255,255,.98), rgba(248,251,255,.98));
         border:1px solid var(--line);
-        border-radius:22px;
-        padding:20px;
+        border-radius:20px;
+        padding:18px;
         margin-bottom:18px;
         box-shadow:var(--shadow);
     }
@@ -328,7 +347,7 @@ BASE_HTML = """
         align-items:center;
     }
     .hero-title {
-        font-size:30px;
+        font-size:26px;
         line-height:1.15;
         font-weight:800;
         margin:0;
@@ -337,7 +356,7 @@ BASE_HTML = """
     .hero-copy {
         margin:10px 0 0;
         color:#475569;
-        font-size:14px;
+        font-size:13px;
         line-height:1.6;
         max-width:920px;
     }
@@ -371,8 +390,9 @@ BASE_HTML = """
     .form-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:14px; }
     .actions { display:flex; gap:10px; flex-wrap:wrap; margin-top:18px; align-items:end; }
     .subtabs { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px; }
-    .subtabs a,.subtabs span { text-decoration:none; padding:10px 14px; border-radius:10px; background:#f3f4f6; border:1px solid #d1d5db; color:var(--text); font-size:13px; font-weight:bold; }
-    .subtabs .active { background:var(--primary-deep); color:white; border-color:var(--primary-deep); }
+    .subtabs a,.subtabs span { text-decoration:none; padding:10px 14px; border-radius:12px; background:#fff; border:1px solid #d1dbe8; color:var(--text); font-size:13px; font-weight:800; box-shadow:var(--shadow-soft); }
+    .subtabs a:hover { color:var(--primary); border-color:#bfdbfe; background:#f8fbff; }
+    .subtabs .active { background:linear-gradient(180deg,#eff6ff 0%, #dbeafe 100%); color:var(--primary); border-color:#93c5fd; }
     label { display:block; margin-bottom:6px; font-size:13px; font-weight:700; color:#374151; }
     input,select,textarea {
         width:100%;
@@ -402,8 +422,13 @@ BASE_HTML = """
     }
     .btn:hover { transform:translateY(-1px); }
     .btn-primary { background:var(--primary); color:white; box-shadow:0 10px 18px rgba(37,99,235,.18); }
+    .btn-primary:hover, .btn-primary:focus-visible { background:#1e40af; }
     .btn-green { background:var(--green); color:white; }
+    .btn-green:hover, .btn-green:focus-visible { background:#15803d; }
     .btn-white { background:white; color:var(--text); border-color:#c8d0da; }
+    .btn-white:hover, .btn-white:focus-visible { color:var(--primary); border-color:#93c5fd; background:#f8fbff; }
+    .btn:active { transform:translateY(0); }
+    .btn.is-active { background:linear-gradient(180deg,#eff6ff 0%, #dbeafe 100%); color:var(--primary); border-color:#93c5fd; }
     .photo-box { height:220px; border:2px dashed #cbd5e1; border-radius:16px; display:flex; align-items:center; justify-content:center; background:#f8fafc; color:var(--muted); font-weight:bold; }
     .table-scroll {
         overflow:auto;
@@ -592,18 +617,18 @@ BASE_HTML = """
         <div class="quickbar">
             <span class="section-chip">{{ title }}</span>
             {% for item in quick_links %}
-                <a href="{{ item.href }}">{{ item.label }}</a>
+                <a href="{{ item.href }}" class="{{ 'active' if item.get('active') else '' }}">{{ item.label }}</a>
             {% endfor %}
             {% if active in ['client_companies', 'our_businesses'] %}
-                <a href="/client-companies">거래처목록</a>
-                <a href="/our-businesses">사업자목록</a>
+                <a href="/client-companies" class="{{ 'active' if request.path == '/client-companies' else '' }}">거래처목록</a>
+                <a href="/our-businesses" class="{{ 'active' if request.path == '/our-businesses' else '' }}">사업자목록</a>
             {% endif %}
         </div>
         {% elif active in ['client_companies', 'our_businesses'] %}
         <div class="quickbar">
             <span class="section-chip">{{ title }}</span>
-            <a href="/client-companies">거래처목록</a>
-            <a href="/our-businesses">사업자목록</a>
+            <a href="/client-companies" class="{{ 'active' if request.path == '/client-companies' else '' }}">거래처목록</a>
+            <a href="/our-businesses" class="{{ 'active' if request.path == '/our-businesses' else '' }}">사업자목록</a>
         </div>
         {% endif %}
     </div>

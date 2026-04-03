@@ -47,7 +47,7 @@ def payroll_page() -> str:
 
     selected_client = get_client_company(selected_client_company_id)
     content = f"""
-    <div class="panel" style="margin-bottom:18px;">
+    <div class="panel" style="margin-bottom:18px;" id="payroll-filter">
         <div class="panel-body">
             <form method="get" class="actions" style="margin-top:0;">
                 <div><label>거래처 선택</label><select name="client_company_id">{"".join(client_options)}</select></div>
@@ -63,7 +63,7 @@ def payroll_page() -> str:
         <div class="card"><div class="label">대상 인력</div><div class="value">{len(filtered_employees)}</div></div>
         <div class="card"><div class="label">총 실지급액</div><div class="value" style="font-size:22px;">{format_won(total_final_amount)}</div></div>
     </div>
-    <div class="panel">
+    <div class="panel" id="payroll-table">
         <div class="panel-head"><h2>급여대장</h2><p>출퇴근 기록 기반 계산 결과</p></div>
         <div class="panel-body">
             <table>
@@ -73,4 +73,7 @@ def payroll_page() -> str:
         </div>
     </div>
     """
-    return render_page("급여관리", "payroll", content, [{"label": "급여계산", "href": "/payroll"}])
+    return render_page("급여관리", "payroll", content, [
+        {"label": "급여계산", "href": "/payroll", "active": True},
+        {"label": "지급내역", "href": "/payroll#payroll-table", "active": False},
+    ])
