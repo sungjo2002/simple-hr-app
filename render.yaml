@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: simple-hr-app
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: SEED_DATABASE
+        value: "false"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: simple-hr-db
+          property: connectionString
+
+databases:
+  - name: simple-hr-db
+    plan: free
