@@ -53,7 +53,7 @@ def employees_page() -> str:
     </div>
     """
     quick = [{"label": "사원목록", "href": "/employees", "active": True}, {"label": "사원등록", "href": "/employees/new", "active": False}]
-    return render_page("인력관리", "employees", content, quick)
+    return render_page("직원관리", "employees", content, quick)
 
 
 @employees_bp.route("/employees/new", methods=["GET", "POST"])
@@ -126,7 +126,7 @@ def employee_new() -> str:
     </div>
     """
     quick = [{"label": "사원목록", "href": "/employees", "active": False}, {"label": "사원등록", "href": "/employees/new", "active": True}]
-    return render_page("인력등록", "employees", content, quick)
+    return render_page("직원등록", "employees", content, quick)
 
 
 @employees_bp.route("/employees/<int:employee_id>", methods=["GET", "POST"])
@@ -234,4 +234,4 @@ def employee_detail(employee_id: int) -> str:
     </div>
     """
     quick = [{"label": "사원목록", "href": "/employees", "active": True}, {"label": "사원등록", "href": "/employees/new", "active": False}]
-    return render_page("인력상세", "employees", content, quick)
+    return render_page("직원상세", "employees", content, quick)
