@@ -819,13 +819,26 @@ BASE_HTML = """
 
 
 .drilldown-panel{margin-top:18px;padding-top:16px;border-top:1px solid #e5e7eb;}
-.drilldown-title{font-size:14px;font-weight:800;color:#0f172a;margin-bottom:8px;}
+.drilldown-panel-highlight{padding:18px;border:1px solid #dbeafe;border-radius:18px;background:linear-gradient(180deg,#f8fbff 0%,#eef5ff 100%);box-shadow:0 10px 24px rgba(37,99,235,.08);}
+.drilldown-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px;}
+.drilldown-title{font-size:14px;font-weight:800;color:#0f172a;margin-bottom:6px;}
 .drilldown-actions{display:flex;flex-wrap:wrap;gap:8px;}
+.drilldown-actions-prominent{gap:10px;}
 .drilldown-hint{margin-top:8px;font-size:12px;color:#64748b;}
 .drilldown-summary-row{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;}
+.drilldown-badge{display:inline-flex;align-items:center;justify-content:center;padding:7px 12px;border-radius:999px;background:#dbeafe;color:#1d4ed8;font-size:12px;font-weight:800;border:1px solid #bfdbfe;}
+.btn-drill{background:#fff;color:#0f172a;border-color:#cbd5e1;box-shadow:0 8px 18px rgba(15,23,42,.08);}
+.btn-drill:hover,.btn-drill:focus-visible{border-color:#93c5fd;background:#f8fbff;color:#1d4ed8;}
+.btn-drill-primary{background:linear-gradient(180deg,#2563eb 0%,#1d4ed8 100%);color:#fff;border-color:#1d4ed8;box-shadow:0 12px 20px rgba(37,99,235,.22);}
+.btn-drill-primary:hover,.btn-drill-primary:focus-visible{background:linear-gradient(180deg,#1d4ed8 0%,#1e40af 100%);color:#fff;border-color:#1e40af;}
 .drill-actions-cell{white-space:nowrap;}
-.table-mini-link{display:inline-flex;align-items:center;justify-content:center;padding:6px 10px;border-radius:999px;border:1px solid #dbe4f0;background:#fff;color:#1d4ed8;font-size:12px;font-weight:700;margin-right:6px;text-decoration:none;}
+.table-mini-link{display:inline-flex;align-items:center;justify-content:center;padding:7px 11px;border-radius:999px;border:1px solid #dbe4f0;background:#fff;color:#1d4ed8;font-size:12px;font-weight:800;margin-right:6px;margin-bottom:6px;text-decoration:none;box-shadow:0 3px 8px rgba(15,23,42,.04);}
 .table-mini-link:hover{background:#eff6ff;border-color:#bfdbfe;}
+.table-mini-link.strong{background:#eff6ff;border-color:#bfdbfe;color:#1d4ed8;}
+@media (max-width: 980px){
+    .drilldown-actions,.drilldown-actions-prominent{width:100%;}
+    .drilldown-actions .btn,.drilldown-actions-prominent .btn{flex:1 1 160px;text-align:center;}
+}
 </style>
 </head>
 <body>

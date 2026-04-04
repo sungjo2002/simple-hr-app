@@ -120,30 +120,52 @@ def home() -> str:
 
     visible_employees = filtered_employees[:row_limit]
 
-    rows = ""
-    for employee in visible_employees:
-        row_style = ' style="background:#eff6ff;"' if selected_employee_id == employee.id else ""
-        detail_href = _home_url(
-            current_date=current_date,
-            client_company_id=client_company_id,
-            employee_keyword=employee_keyword,
-            selected_employee_id=employee.id,
-            row_limit=row_limit,
-            status_filter=status_filter,
-        )
-        rows += f"""
-        <tr{row_style}>
-            <td>{employee.id}</td>
-            <td><a class="js-keep-scroll" href="{detail_href}">{escape(employee.name)}</a></td>
-            <td>{escape(employee.nationality or "-")}</td>
-            <td>{escape(get_our_business_name(employee.our_business_id))}</td>
-            <td>{escape(get_client_company_name(employee.current_client_company_id))}</td>
-            <td>{escape(get_work_type_name(employee.work_type_id))}</td>
-            <td>{status_badge(get_display_status(employee.id, current_date))}</td>
-        </tr>
-        """
-    if not rows:
-        rows = '<tr><td colspan="7">조건에 맞는 인력이 없습니다.</td></tr>'
+rows = ""
+for employee in visible_employees:
+    row_style = ' style="background:#eff6ff;"' if selected_employee_id == employee.id else ""
+    detail_href = _home_url(
+        current_date=current_date,
+        client_company_id=client_company_id,
+        employee_keyword=employee_keyword,
+        selected_employee_id=employee.id,
+        row_limit=row_limit,
+        status_filter=status_filter,
+    )
+    employee_records_href = _records_url(
+        "all",
+        current_date,
+        employee.current_client_company_id,
+        employee.name,
+    )
+    employee_monthly_href = _records_url(
+        "monthly",
+        current_date,
+        employee.current_client_company_id,
+        employee.name,
+    )
+    employee_payroll_href = _payroll_url(
+        current_date,
+        employee.current_client_company_id,
+        employee.name,
+    )
+    rows += f"""
+    <tr{row_style}>
+        <td>{employee.id}</td>
+        <td><a class="js-keep-scroll" href="{detail_href}">{escape(employee.name)}</a></td>
+        <td>{escape(employee.nationality or "-")}</td>
+        <td>{escape(get_our_business_name(employee.our_business_id))}</td>
+        <td>{escape(get_client_company_name(employee.current_client_company_id))}</td>
+        <td>{escape(get_work_type_name(employee.work_type_id))}</td>
+        <td>{status_badge(get_display_status(employee.id, current_date))}</td>
+        <td class="drill-actions-cell">
+            <a class="table-mini-link" href="{employee_records_href}">상세기록</a>
+            <a class="table-mini-link" href="{employee_monthly_href}">월별현황</a>
+            <a class="table-mini-link strong" href="{employee_payroll_href}">급여대장</a>
+        </td>
+    </tr>
+    """
+if not rows:
+    rows = '<tr><td colspan="8">조건에 맞는 인력이 없습니다.</td></tr>'
 
     client_options = ['<option value="">전체 거래처</option>']
     for client in ClientCompany.query.order_by(ClientCompany.id.asc()).all():
@@ -159,6 +181,10 @@ def home() -> str:
         selected_employee_id = selected_employee.id if selected_employee else None
     else:
         selected_employee_id = selected_employee.id if selected_employee else None
+
+summary_records_href = _records_url("all", current_date, client_company_id, employee_keyword)
+summary_monthly_href = _records_url("monthly", current_date, client_company_id, employee_keyword)
+summary_payroll_href = _payroll_url(current_date, client_company_id, employee_keyword)
 
     scorecard = calculate_employee_scorecard(selected_employee_id) if selected_employee_id else None
 
@@ -226,15 +252,20 @@ def home() -> str:
                     <div class="legend-value">{escape(get_work_type_name(selected_employee.work_type_id))}</div>
                 </div>
             </div>
-            <div class="drilldown-panel">
-                <div class="drilldown-title">상세 바로가기</div>
-                <div class="drilldown-actions">
-                    <a class="btn btn-white" href="{detail_records_href}">상세 기록 보기</a>
-                    <a class="btn btn-white" href="{monthly_records_href}">월별 현황 보기</a>
-                    <a class="btn btn-primary" href="{payroll_detail_href}">급여 보기</a>
-                    <a class="btn btn-white" href="/employees/{selected_employee.id}">사원 정보</a>
+            <div class="drilldown-panel drilldown-panel-highlight">
+                <div class="drilldown-head">
+                    <div>
+                        <div class="drilldown-title">선택 인력 바로가기</div>
+                        <div class="drilldown-hint">선택된 인력과 기준월을 그대로 넘겨 상세 화면으로 바로 이동합니다.</div>
+                    </div>
+                    <span class="drilldown-badge">선택 인력 기준</span>
                 </div>
-                <div class="drilldown-hint">선택된 인력 이름과 거래처, 기준월을 반영해 바로 이동합니다.</div>
+                <div class="drilldown-actions">
+                    <a class="btn btn-drill" href="{detail_records_href}">상세기록</a>
+                    <a class="btn btn-drill" href="{monthly_records_href}">월별현황</a>
+                    <a class="btn btn-drill btn-drill-primary" href="{payroll_detail_href}">급여대장</a>
+                    <a class="btn btn-white" href="/employees/{selected_employee.id}">사원정보</a>
+                </div>
             </div>
         </div>
         """
@@ -333,13 +364,13 @@ def home() -> str:
         <div class="panel-body">
             <div class="drilldown-summary-row">
                 <div>
-                    <div class="drilldown-title">요약에서 상세로 바로 이동</div>
-                    <div class="drilldown-hint">홈 화면의 카드와 인력지표 다음 단계로, 근태 상세기록과 급여대장으로 이어지도록 연결을 강화했습니다.</div>
+                    <div class="drilldown-title">빠른 이동</div>
+                    <div class="drilldown-hint">현재 조회일, 거래처, 검색조건을 유지한 채 바로 아래 기록·월별·급여 화면으로 이동합니다.</div>
                 </div>
-                <div class="drilldown-actions">
-                    <a class="btn btn-white" href="{_records_url("all", current_date, client_company_id, employee_keyword)}">전체 기록 보기</a>
-                    <a class="btn btn-white" href="{_records_url("monthly", current_date, client_company_id, employee_keyword)}">월별 현황 보기</a>
-                    <a class="btn btn-primary" href="{_payroll_url(current_date, client_company_id, employee_keyword)}">급여대장 보기</a>
+                <div class="drilldown-actions drilldown-actions-prominent">
+                    <a class="btn btn-drill" href="{summary_records_href}">상세기록</a>
+                    <a class="btn btn-drill" href="{summary_monthly_href}">월별현황</a>
+                    <a class="btn btn-drill btn-drill-primary" href="{summary_payroll_href}">급여대장</a>
                 </div>
             </div>
         </div>
