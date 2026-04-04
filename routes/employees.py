@@ -355,7 +355,7 @@ def _render_employee_new_page(
                                 </div>
                             </div>
                             <div class="actions" style="margin-top:14px;">
-                                <button class="btn btn-white" type="submit" name="action" value="autoextract">자동추출</button>
+                                <button class="btn btn-white" type="submit" name="action" value="autoextract" formnovalidate>자동추출</button>
                             </div>
                         </div>
                     </div>
@@ -545,6 +545,8 @@ def employee_new() -> str:
                     form_values["temp_file_path"] = temp_relative_path
                     form_values["existing_document_file_name"] = document_file.filename
                     form_values["existing_document_mime_type"] = document_file.mimetype or "application/octet-stream"
+                    if not form_values["file_name"]:
+                        form_values["file_name"] = Path(document_file.filename).stem
                     if extraction.name and not form_values["name"]:
                         form_values["name"] = extraction.name
                     if extraction.english_name:
