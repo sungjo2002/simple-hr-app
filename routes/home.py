@@ -120,52 +120,52 @@ def home() -> str:
 
     visible_employees = filtered_employees[:row_limit]
 
-rows = ""
-for employee in visible_employees:
-    row_style = ' style="background:#eff6ff;"' if selected_employee_id == employee.id else ""
-    detail_href = _home_url(
-        current_date=current_date,
-        client_company_id=client_company_id,
-        employee_keyword=employee_keyword,
-        selected_employee_id=employee.id,
-        row_limit=row_limit,
-        status_filter=status_filter,
-    )
-    employee_records_href = _records_url(
-        "all",
-        current_date,
-        employee.current_client_company_id,
-        employee.name,
-    )
-    employee_monthly_href = _records_url(
-        "monthly",
-        current_date,
-        employee.current_client_company_id,
-        employee.name,
-    )
-    employee_payroll_href = _payroll_url(
-        current_date,
-        employee.current_client_company_id,
-        employee.name,
-    )
-    rows += f"""
-    <tr{row_style}>
-        <td>{employee.id}</td>
-        <td><a class="js-keep-scroll" href="{detail_href}">{escape(employee.name)}</a></td>
-        <td>{escape(employee.nationality or "-")}</td>
-        <td>{escape(get_our_business_name(employee.our_business_id))}</td>
-        <td>{escape(get_client_company_name(employee.current_client_company_id))}</td>
-        <td>{escape(get_work_type_name(employee.work_type_id))}</td>
-        <td>{status_badge(get_display_status(employee.id, current_date))}</td>
-        <td class="drill-actions-cell">
-            <a class="table-mini-link" href="{employee_records_href}">상세기록</a>
-            <a class="table-mini-link" href="{employee_monthly_href}">월별현황</a>
-            <a class="table-mini-link strong" href="{employee_payroll_href}">급여대장</a>
-        </td>
-    </tr>
-    """
-if not rows:
-    rows = '<tr><td colspan="8">조건에 맞는 인력이 없습니다.</td></tr>'
+    rows = ""
+    for employee in visible_employees:
+        row_style = ' style="background:#eff6ff;"' if selected_employee_id == employee.id else ""
+        detail_href = _home_url(
+            current_date=current_date,
+            client_company_id=client_company_id,
+            employee_keyword=employee_keyword,
+            selected_employee_id=employee.id,
+            row_limit=row_limit,
+            status_filter=status_filter,
+        )
+        employee_records_href = _records_url(
+            "all",
+            current_date,
+            employee.current_client_company_id,
+            employee.name,
+        )
+        employee_monthly_href = _records_url(
+            "monthly",
+            current_date,
+            employee.current_client_company_id,
+            employee.name,
+        )
+        employee_payroll_href = _payroll_url(
+            current_date,
+            employee.current_client_company_id,
+            employee.name,
+        )
+        rows += f"""
+        <tr{row_style}>
+            <td>{employee.id}</td>
+            <td><a class="js-keep-scroll" href="{detail_href}">{escape(employee.name)}</a></td>
+            <td>{escape(employee.nationality or "-")}</td>
+            <td>{escape(get_our_business_name(employee.our_business_id))}</td>
+            <td>{escape(get_client_company_name(employee.current_client_company_id))}</td>
+            <td>{escape(get_work_type_name(employee.work_type_id))}</td>
+            <td>{status_badge(get_display_status(employee.id, current_date))}</td>
+            <td class="drill-actions-cell">
+                <a class="table-mini-link" href="{employee_records_href}">상세기록</a>
+                <a class="table-mini-link" href="{employee_monthly_href}">월별현황</a>
+                <a class="table-mini-link strong" href="{employee_payroll_href}">급여대장</a>
+            </td>
+        </tr>
+        """
+    if not rows:
+        rows = '<tr><td colspan="8">조건에 맞는 인력이 없습니다.</td></tr>'
 
     client_options = ['<option value="">전체 거래처</option>']
     for client in ClientCompany.query.order_by(ClientCompany.id.asc()).all():
@@ -182,12 +182,12 @@ if not rows:
     else:
         selected_employee_id = selected_employee.id if selected_employee else None
 
-summary_records_href = _records_url("all", current_date, client_company_id, employee_keyword)
-summary_monthly_href = _records_url("monthly", current_date, client_company_id, employee_keyword)
-summary_payroll_href = _payroll_url(current_date, client_company_id, employee_keyword)
-
+    summary_records_href = _records_url("all", current_date, client_company_id, employee_keyword)
+    summary_monthly_href = _records_url("monthly", current_date, client_company_id, employee_keyword)
+    summary_payroll_href = _payroll_url(current_date, client_company_id, employee_keyword)
+    
     scorecard = calculate_employee_scorecard(selected_employee_id) if selected_employee_id else None
-
+    
     detail_records_href = "#"
     monthly_records_href = "#"
     payroll_detail_href = "#"
@@ -209,7 +209,7 @@ summary_payroll_href = _payroll_url(current_date, client_company_id, employee_ke
             selected_employee.current_client_company_id,
             selected_employee.name,
         )
-
+    
     score_html = '<div class="empty-score">왼쪽에서 사원을 검색하거나 표의 이름을 누르면 인력 지표가 이곳에 표시됩니다.</div>'
     if selected_employee and scorecard:
         work_score = scorecard["work_score"]
