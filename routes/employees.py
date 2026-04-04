@@ -1,6 +1,6 @@
 from flask import Blueprint, flash, redirect, request, url_for
 
-from models import ClientCompany, Employee, EmployeeDocument, db
+from models import AttendanceRecord, ClientCompany, Employee, EmployeeDocument, OurBusiness, db
 from utils import (
     DOCUMENT_TYPE_LABELS,
     PAY_TYPE_LABELS,
@@ -27,6 +27,22 @@ from utils import (
 employees_bp = Blueprint("employees", __name__)
 
 
+def _employee_action_forms(employee: Employee, compact: bool = False) -> str:
+    gap = "6px" if compact else "8px"
+    employee_active = employee.status == "active"
+    return f"""
+    <div class="actions" style="gap:{gap}; flex-wrap:wrap;">
+        <a class="btn btn-white" href="/employees/{employee.id}/edit">수정</a>
+        <form method="post" action="/employees/{employee.id}/toggle-active" onsubmit="return confirm('직원 상태를 전환할까요?');" style="display:inline;">
+            <button class="btn btn-white" type="submit">{'비활성' if employee_active else '활성'}</button>
+        </form>
+        <form method="post" action="/employees/{employee.id}/delete" onsubmit="return confirm('직원을 삭제할까요? 근태/문서 기록이 있으면 삭제할 수 없습니다.');" style="display:inline;">
+            <button class="btn btn-danger" type="submit">삭제</button>
+        </form>
+    </div>
+    """
+
+
 @employees_bp.route("/employees")
 def employees_page() -> str:
     client_company_raw = request.args.get("client_company_id", "")
@@ -50,6 +66,7 @@ def employees_page() -> str:
             or q_lower in get_work_type_name(employee.work_type_id).lower()
             or q_lower in PAY_TYPE_LABELS.get(employee.pay_type, "-").lower()
             or q_lower in get_today_status(employee.id).lower()
+            or q_lower in employee.status.lower()
         ]
 
     sort_funcs = {
@@ -60,11 +77,12 @@ def employees_page() -> str:
         "client_company": lambda employee: get_client_company_name(employee.current_client_company_id).lower(),
         "work_type": lambda employee: get_work_type_name(employee.work_type_id).lower(),
         "pay_type": lambda employee: PAY_TYPE_LABELS.get(employee.pay_type, "-"),
-        "status": lambda employee: get_today_status(employee.id),
+        "status": lambda employee: employee.status,
+        "today_status": lambda employee: get_today_status(employee.id),
     }
     items = sort_items(items, sort, sort_funcs, direction)
 
-    export_headers = ["번호", "이름", "국적", "사업자", "거래처", "근무타입", "급여형태", "오늘 상태"]
+    export_headers = ["번호", "이름", "국적", "사업자", "거래처", "근무타입", "급여형태", "재직상태", "오늘 상태"]
     export_rows = [
         [
             employee.id,
@@ -74,6 +92,7 @@ def employees_page() -> str:
             get_client_company_name(employee.current_client_company_id),
             get_work_type_name(employee.work_type_id),
             PAY_TYPE_LABELS.get(employee.pay_type, "-"),
+            "재직" if employee.status == "active" else "비활성",
             get_today_status(employee.id),
         ]
         for employee in items
@@ -85,6 +104,7 @@ def employees_page() -> str:
     paged_items, total_count, total_pages = paginate_items(items, page, 10)
     rows = ""
     for employee in paged_items:
+        employment_badge = status_badge("근무중" if employee.status == "active" else "결근")
         rows += f"""
         <tr>
             <td>{employee.id}</td>
@@ -94,50 +114,44 @@ def employees_page() -> str:
             <td>{get_client_company_name(employee.current_client_company_id)}</td>
             <td>{get_work_type_name(employee.work_type_id)}</td>
             <td>{PAY_TYPE_LABELS.get(employee.pay_type, "-")}</td>
+            <td>{employment_badge}</td>
             <td>{status_badge(get_today_status(employee.id))}</td>
+            <td>{_employee_action_forms(employee, compact=True)}</td>
         </tr>
         """
 
     filter_options = ['<option value="">전체 거래처</option>']
-    for item in ClientCompany.query.order_by(ClientCompany.id.asc()).all():
-        selected = "selected" if item.id == client_company_id else ""
-        filter_options.append(f'<option value="{item.id}" {selected}>{item.name}</option>')
+    for company in ClientCompany.query.order_by(ClientCompany.id.asc()).all():
+        selected = "selected" if client_company_id == company.id else ""
+        filter_options.append(f'<option value="{company.id}" {selected}>{company.name}</option>')
 
-    current_params = {"client_company_id": client_company_raw, "q": q, "sort": sort, "direction": direction}
     toolbar = render_table_toolbar(
         base_path="/employees",
-        current_params=current_params,
+        current_params={"client_company_id": client_company_id or "", "q": q, "sort": sort, "direction": direction},
         search_placeholder="이름, 국적, 사업자, 거래처, 근무타입 검색",
         search_value=q,
-        sort_options=[("id", "번호"), ("name", "이름"), ("nationality", "국적"), ("our_business", "사업자"), ("client_company", "거래처"), ("work_type", "근무타입"), ("pay_type", "급여형태"), ("status", "오늘 상태")],
+        sort_options=[("id", "번호"), ("name", "이름"), ("nationality", "국적"), ("our_business", "사업자"), ("client_company", "거래처"), ("work_type", "근무타입"), ("pay_type", "급여형태"), ("status", "재직상태"), ("today_status", "오늘 상태")],
         current_sort=sort,
         current_direction=direction,
         create_href="/employees/new",
-        create_label="인력등록",
+        create_label="+ 직원등록",
         reset_href="/employees",
-    ).replace('<input type="hidden" name="page" value="1">', f'<input type="hidden" name="page" value="1"><input type="hidden" name="client_company_id" value="{client_company_raw}">')
-
-    pagination = render_pagination("/employees", current_params, page, total_pages, total_count)
-    content = f"""
-    <div class="panel" style="margin-bottom:18px;">
-        <div class="panel-body">
-            <form method="get" class="actions" style="margin-top:0;">
-                <div style="min-width:260px;"><label>거래처 필터</label><select name="client_company_id">{''.join(filter_options)}</select></div>
-                <input type="hidden" name="q" value="{q}">
-                <input type="hidden" name="sort" value="{sort}">
-                <input type="hidden" name="direction" value="{direction}">
-                <div><button class="btn btn-white" type="submit">조회</button></div>
-                <div><a class="btn btn-white" href="/employees">초기화</a></div>
-            </form>
+        filter_html=f"""
+        <div>
+            <label>거래처 선택</label>
+            <select name="client_company_id">{''.join(filter_options)}</select>
         </div>
-    </div>
+        """,
+    )
+    pagination = render_pagination("/employees", {"client_company_id": client_company_id or "", "q": q, "sort": sort, "direction": direction}, page, total_pages, total_count)
+    content = f"""
     <div class="panel">
-        <div class="panel-head"><h2>인력목록</h2><p>사업자 / 거래처 / 근무타입 기준 관리</p></div>
+        <div class="panel-head"><h2>직원목록</h2><p>배치 인력 조회 및 관리</p></div>
         <div class="panel-body">
             {toolbar}
             <table>
-                <thead><tr><th>번호</th><th>이름</th><th>국적</th><th>사업자</th><th>거래처</th><th>근무타입</th><th>급여형태</th><th>오늘 상태</th></tr></thead>
-                <tbody>{rows or '<tr><td colspan="8">인력이 없습니다.</td></tr>'}</tbody>
+                <thead><tr><th>번호</th><th>이름</th><th>국적</th><th>사업자</th><th>거래처</th><th>근무타입</th><th>급여형태</th><th>재직상태</th><th>오늘 상태</th><th>관리</th></tr></thead>
+                <tbody>{rows or '<tr><td colspan="10">데이터가 없습니다.</td></tr>'}</tbody>
             </table>
             {pagination}
         </div>
@@ -149,7 +163,6 @@ def employees_page() -> str:
 
 @employees_bp.route("/employees/new", methods=["GET", "POST"])
 def employee_new() -> str:
-    from models import ClientCompany, OurBusiness
     businesses = OurBusiness.query.order_by(OurBusiness.id.asc()).all()
     if not businesses:
         return "먼저 사업자를 등록하세요.", 400
@@ -209,8 +222,8 @@ def employee_new() -> str:
                     <div><label>국적</label><input name="nationality" required></div>
                     <div><label>연락처</label><input name="phone"></div>
                     <div><label>입사일</label><input type="date" name="hire_date" value="{today_str()}"></div>
-                    <div><label>급여형태</label><select name="pay_type"><option value="monthly">월급제</option><option value="daily">일급제</option><option value="hourly">시급제</option></select></div>
                     <div><label>근무타입</label><select name="work_type_id">{work_type_options}</select></div>
+                    <div><label>급여형태</label><select name="pay_type"><option value="monthly">월급</option><option value="daily">일급</option><option value="hourly">시급</option></select></div>
                 </div>
                 <div class="actions"><button class="btn btn-primary" type="submit">저장</button><a class="btn btn-white" href="/employees">취소</a></div>
             </form>
@@ -221,9 +234,111 @@ def employee_new() -> str:
     return render_page("직원등록", "employees", content, quick)
 
 
+@employees_bp.route("/employees/<int:employee_id>/edit", methods=["GET", "POST"])
+def employee_edit(employee_id: int) -> str:
+    employee = get_employee(employee_id)
+    if not employee:
+        return "인력을 찾을 수 없습니다.", 404
+
+    selected_our_business_id = int(request.values.get("our_business_id", employee.our_business_id))
+    selected_client_company_id = int(request.values.get("client_company_id", employee.current_client_company_id or 0))
+
+    businesses = OurBusiness.query.order_by(OurBusiness.id.asc()).all()
+    if not businesses:
+        return "먼저 사업자를 등록하세요.", 400
+
+    clients = ClientCompany.query.filter_by(our_business_id=selected_our_business_id).order_by(ClientCompany.id.asc()).all()
+    if clients and selected_client_company_id == 0:
+        selected_client_company_id = clients[0].id
+
+    if request.method == "POST":
+        employee.our_business_id = int(request.form["our_business_id"])
+        employee.current_client_company_id = int(request.form["client_company_id"])
+        employee.name = request.form["name"].strip()
+        employee.nationality = request.form["nationality"].strip()
+        employee.phone = request.form.get("phone", "").strip()
+        employee.hire_date = request.form.get("hire_date", today_str())
+        employee.work_type_id = int(request.form["work_type_id"])
+        employee.pay_type = request.form.get("pay_type", "monthly")
+        employee.status = request.form.get("status", "active")
+        employee.updated_at = today_str()
+        db.session.commit()
+        flash("직원 정보가 수정되었습니다.", "success")
+        return redirect(url_for("employees.employee_detail", employee_id=employee.id))
+
+    business_options = render_our_business_options(selected_our_business_id)
+    client_options = render_client_company_options(selected_client_company_id, selected_our_business_id)
+    work_type_options = render_work_type_options(selected_client_company_id, employee.work_type_id)
+
+    content = f"""
+    <div class="panel">
+        <div class="panel-head"><h2>직원수정</h2><p>{employee.name}</p></div>
+        <div class="panel-body">
+            <form method="get" class="panel" style="box-shadow:none; border-radius:14px; margin-bottom:16px;">
+                <input type="hidden" name="name" value="{employee.name}">
+                <div class="panel-body">
+                    <div class="form-grid">
+                        <div><label>사업자</label><select name="our_business_id" onchange="this.form.submit()">{business_options}</select></div>
+                        <div><label>거래처</label><select name="client_company_id" onchange="this.form.submit()">{client_options}</select></div>
+                    </div>
+                </div>
+            </form>
+            <form method="post">
+                <input type="hidden" name="our_business_id" value="{selected_our_business_id}">
+                <input type="hidden" name="client_company_id" value="{selected_client_company_id}">
+                <div class="form-grid">
+                    <div><label>사업자</label><input value="{get_our_business_name(selected_our_business_id)}" disabled></div>
+                    <div><label>거래처</label><input value="{get_client_company_name(selected_client_company_id)}" disabled></div>
+                    <div><label>이름</label><input name="name" value="{employee.name}" required></div>
+                    <div><label>국적</label><input name="nationality" value="{employee.nationality}" required></div>
+                    <div><label>연락처</label><input name="phone" value="{employee.phone or ''}"></div>
+                    <div><label>입사일</label><input type="date" name="hire_date" value="{employee.hire_date}"></div>
+                    <div><label>근무타입</label><select name="work_type_id">{work_type_options}</select></div>
+                    <div><label>급여형태</label><select name="pay_type"><option value="monthly" {'selected' if employee.pay_type == 'monthly' else ''}>월급</option><option value="daily" {'selected' if employee.pay_type == 'daily' else ''}>일급</option><option value="hourly" {'selected' if employee.pay_type == 'hourly' else ''}>시급</option></select></div>
+                    <div><label>재직상태</label><select name="status"><option value="active" {'selected' if employee.status == 'active' else ''}>재직</option><option value="inactive" {'selected' if employee.status != 'active' else ''}>비활성</option></select></div>
+                </div>
+                <div class="actions"><button class="btn btn-primary" type="submit">수정 저장</button><a class="btn btn-white" href="/employees/{employee.id}">취소</a></div>
+            </form>
+        </div>
+    </div>
+    """
+    quick = [{"label": "사원목록", "href": "/employees", "active": False}, {"label": "직원수정", "href": f"/employees/{employee.id}/edit", "active": True}]
+    return render_page("직원수정", "employees", content, quick)
+
+
+@employees_bp.route("/employees/<int:employee_id>/toggle-active", methods=["POST"])
+def employee_toggle_active(employee_id: int):
+    employee = get_employee(employee_id)
+    if not employee:
+        return "인력을 찾을 수 없습니다.", 404
+
+    employee.status = "inactive" if employee.status == "active" else "active"
+    employee.updated_at = today_str()
+    db.session.commit()
+    flash(f"직원 상태가 {'재직' if employee.status == 'active' else '비활성'}으로 변경되었습니다.", "success")
+    return redirect(request.referrer or url_for("employees.employees_page"))
+
+
+@employees_bp.route("/employees/<int:employee_id>/delete", methods=["POST"])
+def employee_delete(employee_id: int):
+    employee = get_employee(employee_id)
+    if not employee:
+        return "인력을 찾을 수 없습니다.", 404
+
+    attendance_count = AttendanceRecord.query.filter_by(employee_id=employee_id).count()
+    document_count = EmployeeDocument.query.filter_by(employee_id=employee_id).count()
+    if attendance_count or document_count:
+        flash("근태 기록 또는 문서가 있어 직원을 삭제할 수 없습니다. 비활성으로 전환해 주세요.", "error")
+        return redirect(request.referrer or url_for("employees.employee_detail", employee_id=employee_id))
+
+    db.session.delete(employee)
+    db.session.commit()
+    flash("직원이 삭제되었습니다.", "success")
+    return redirect(url_for("employees.employees_page"))
+
+
 @employees_bp.route("/employees/<int:employee_id>", methods=["GET", "POST"])
 def employee_detail(employee_id: int) -> str:
-    from models import AttendanceRecord
     employee = get_employee(employee_id)
     if not employee:
         return "인력을 찾을 수 없습니다.", 404
@@ -274,6 +389,12 @@ def employee_detail(employee_id: int) -> str:
         """
 
     content = f"""
+    <div class="panel" style="margin-bottom:18px;">
+        <div class="panel-head"><h2>직원 관리 액션</h2><p>{employee.name}</p></div>
+        <div class="panel-body">
+            {_employee_action_forms(employee)}
+        </div>
+    </div>
     <div class="two-col">
         <div class="side-box" style="padding:14px;">
             <h3 style="margin:0 0 12px;">인력 사진</h3>
@@ -293,6 +414,7 @@ def employee_detail(employee_id: int) -> str:
                         <tr><th>연락처</th><td>{employee.phone or '-'}</td></tr>
                         <tr><th>입사일</th><td>{employee.hire_date}</td></tr>
                         <tr><th>급여형태</th><td>{PAY_TYPE_LABELS.get(employee.pay_type, '-')}</td></tr>
+                        <tr><th>재직상태</th><td>{'재직' if employee.status == 'active' else '비활성'}</td></tr>
                         <tr><th>오늘 상태</th><td>{status_badge(get_today_status(employee_id))}</td></tr>
                     </table>
                 </div>

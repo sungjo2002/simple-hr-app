@@ -590,6 +590,8 @@ BASE_HTML = """
     .btn-primary:hover, .btn-primary:focus-visible { background:#1e40af; }
     .btn-green { background:var(--green); color:white; }
     .btn-green:hover, .btn-green:focus-visible { background:#15803d; }
+    .btn-danger { background:#dc2626; color:white; box-shadow:0 10px 18px rgba(220,38,38,.18); }
+    .btn-danger:hover, .btn-danger:focus-visible { background:#b91c1c; }
     .btn-white { background:white; color:var(--text); border-color:#c8d0da; }
     .btn-white:hover, .btn-white:focus-visible { color:var(--primary); border-color:#93c5fd; background:#f8fbff; }
     .btn:active { transform:translateY(0); }

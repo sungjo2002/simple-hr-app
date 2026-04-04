@@ -18,6 +18,21 @@ from utils import (
 clients_bp = Blueprint("clients", __name__)
 
 
+def _client_action_forms(item: ClientCompany, compact: bool = False) -> str:
+    gap = "6px" if compact else "8px"
+    return f"""
+    <div class="actions" style="gap:{gap}; flex-wrap:wrap;">
+        <a class="btn btn-white" href="/client-companies/{item.id}/edit">수정</a>
+        <form method="post" action="/client-companies/{item.id}/toggle-active" onsubmit="return confirm('거래처 사용여부를 전환할까요?');" style="display:inline;">
+            <button class="btn btn-white" type="submit">{'비활성' if item.is_active else '활성'}</button>
+        </form>
+        <form method="post" action="/client-companies/{item.id}/delete" onsubmit="return confirm('거래처를 삭제할까요? 배치 인원이 있으면 삭제할 수 없습니다.');" style="display:inline;">
+            <button class="btn btn-danger" type="submit">삭제</button>
+        </form>
+    </div>
+    """
+
+
 @clients_bp.route("/client-companies")
 def client_companies_page() -> str:
     q = request.args.get("q", "").strip()
@@ -65,6 +80,7 @@ def client_companies_page() -> str:
             <td>{item.business_number}</td>
             <td>{item.phone}</td>
             <td>{"사용" if item.is_active else "미사용"}</td>
+            <td>{_client_action_forms(item, compact=True)}</td>
         </tr>
         """
 
@@ -88,8 +104,8 @@ def client_companies_page() -> str:
         <div class="panel-body">
             {toolbar}
             <table>
-                <thead><tr><th>번호</th><th>사업자</th><th>거래처명</th><th>사업자등록번호</th><th>대표전화</th><th>사용여부</th></tr></thead>
-                <tbody>{rows or '<tr><td colspan="6">데이터가 없습니다.</td></tr>'}</tbody>
+                <thead><tr><th>번호</th><th>사업자</th><th>거래처명</th><th>사업자등록번호</th><th>대표전화</th><th>사용여부</th><th>관리</th></tr></thead>
+                <tbody>{rows or '<tr><td colspan="7">데이터가 없습니다.</td></tr>'}</tbody>
             </table>
             {pagination}
         </div>
@@ -156,6 +172,90 @@ def client_company_new() -> str:
     return render_page("거래처등록", "client_companies", content, quick)
 
 
+@clients_bp.route("/client-companies/<int:client_company_id>/edit", methods=["GET", "POST"])
+def client_company_edit(client_company_id: int) -> str:
+    item = get_client_company(client_company_id)
+    if not item:
+        return "거래처를 찾을 수 없습니다.", 404
+
+    if request.method == "POST":
+        item.our_business_id = int(request.form["our_business_id"])
+        item.name = request.form["name"].strip()
+        item.ceo_name = request.form["ceo_name"].strip()
+        item.business_number = request.form["business_number"].strip()
+        item.phone = request.form["phone"].strip()
+        item.address = request.form["address"].strip()
+        item.business_type = request.form.get("business_type", "").strip()
+        item.business_item = request.form.get("business_item", "").strip()
+        item.email = request.form.get("email", "").strip()
+        item.is_active = request.form.get("is_active", "Y") == "Y"
+        item.memo = request.form.get("memo", "").strip()
+        item.updated_at = today_str()
+        db.session.commit()
+        flash("거래처 정보가 수정되었습니다.", "success")
+        return redirect(url_for("clients.client_company_detail", client_company_id=item.id))
+
+    business_options = render_our_business_options(item.our_business_id)
+    content = f"""
+    <div class="panel">
+        <div class="panel-head"><h2>거래처수정</h2><p>{item.name}</p></div>
+        <div class="panel-body">
+            <form method="post">
+                <div class="form-grid">
+                    <div><label>사업자</label><select name="our_business_id">{business_options}</select></div>
+                    <div><label>거래처명</label><input name="name" value="{item.name}" required></div>
+                    <div><label>대표자명</label><input name="ceo_name" value="{item.ceo_name}" required></div>
+                    <div><label>사업자등록번호</label><input name="business_number" value="{item.business_number}" required></div>
+                    <div><label>대표전화</label><input name="phone" value="{item.phone}" required></div>
+                    <div><label>주소</label><input name="address" value="{item.address}" required></div>
+                    <div><label>업태</label><input name="business_type" value="{item.business_type or ''}"></div>
+                    <div><label>종목</label><input name="business_item" value="{item.business_item or ''}"></div>
+                    <div><label>이메일</label><input name="email" value="{item.email or ''}"></div>
+                    <div><label>사용여부</label><select name="is_active"><option value="Y" {'selected' if item.is_active else ''}>사용</option><option value="N" {'selected' if not item.is_active else ''}>미사용</option></select></div>
+                    <div style="grid-column:1 / -1;"><label>메모</label><textarea name="memo">{item.memo or ''}</textarea></div>
+                </div>
+                <div class="actions"><button class="btn btn-primary" type="submit">수정 저장</button><a class="btn btn-white" href="/client-companies/{item.id}">취소</a></div>
+            </form>
+        </div>
+    </div>
+    """
+    quick = [{"label": "거래처목록", "href": "/client-companies", "active": False}, {"label": "거래처수정", "href": f"/client-companies/{item.id}/edit", "active": True}]
+    return render_page("거래처수정", "client_companies", content, quick)
+
+
+@clients_bp.route("/client-companies/<int:client_company_id>/toggle-active", methods=["POST"])
+def client_company_toggle_active(client_company_id: int):
+    item = get_client_company(client_company_id)
+    if not item:
+        return "거래처를 찾을 수 없습니다.", 404
+
+    item.is_active = not item.is_active
+    item.updated_at = today_str()
+    db.session.commit()
+    flash(f"거래처가 {'활성' if item.is_active else '비활성'} 상태로 변경되었습니다.", "success")
+    return redirect(request.referrer or url_for("clients.client_companies_page"))
+
+
+@clients_bp.route("/client-companies/<int:client_company_id>/delete", methods=["POST"])
+def client_company_delete(client_company_id: int):
+    item = get_client_company(client_company_id)
+    if not item:
+        return "거래처를 찾을 수 없습니다.", 404
+
+    assigned_employee_count = Employee.query.filter_by(current_client_company_id=client_company_id).count()
+    if assigned_employee_count:
+        flash("배치된 인력이 있어 거래처를 삭제할 수 없습니다. 먼저 인력을 이동하거나 비활성으로 전환하세요.", "error")
+        return redirect(request.referrer or url_for("clients.client_company_detail", client_company_id=client_company_id))
+
+    ClientCompanyPayrollSetting.query.filter_by(client_company_id=client_company_id).delete()
+    ClientCompanySetting.query.filter_by(client_company_id=client_company_id).delete()
+    ClientCompanyWorkType.query.filter_by(client_company_id=client_company_id).delete()
+    db.session.delete(item)
+    db.session.commit()
+    flash("거래처가 삭제되었습니다.", "success")
+    return redirect(url_for("clients.client_companies_page"))
+
+
 @clients_bp.route("/client-companies/<int:client_company_id>")
 def client_company_detail(client_company_id: int) -> str:
     item = get_client_company(client_company_id)
@@ -164,6 +264,12 @@ def client_company_detail(client_company_id: int) -> str:
     work_types = ", ".join(w.name for w in get_client_company_work_types(client_company_id)) or "-"
     employee_count = Employee.query.filter_by(current_client_company_id=client_company_id).count()
     content = f"""
+    <div class="panel" style="margin-bottom:18px;">
+        <div class="panel-head"><h2>거래처 관리 액션</h2><p>{item.name}</p></div>
+        <div class="panel-body">
+            {_client_action_forms(item)}
+        </div>
+    </div>
     <div class="panel">
         <div class="panel-head"><h2>거래처상세</h2><p>{item.name}</p></div>
         <div class="panel-body">
