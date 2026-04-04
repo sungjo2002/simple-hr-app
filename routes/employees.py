@@ -32,6 +32,28 @@ employees_bp = Blueprint("employees", __name__)
 ALLOWED_UPLOAD_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".pdf"}
 
 
+SUPPORTED_EPS_COUNTRIES = [
+    ("", "국가 자동/미선택"),
+    ("vietnam", "베트남"),
+    ("philippines", "필리핀"),
+    ("thailand", "태국"),
+    ("indonesia", "인도네시아"),
+    ("mongolia", "몽골"),
+    ("sri_lanka", "스리랑카"),
+    ("cambodia", "캄보디아"),
+    ("uzbekistan", "우즈베키스탄"),
+    ("pakistan", "파키스탄"),
+    ("myanmar", "미얀마"),
+    ("nepal", "네팔"),
+    ("bangladesh", "방글라데시"),
+    ("kyrgyzstan", "키르기스스탄"),
+    ("timor_leste", "동티모르"),
+    ("laos", "라오스"),
+    ("china", "중국"),
+    ("tajikistan", "타지키스탄"),
+]
+
+
 def _employee_base_query(status: str = "active"):
     query = Employee.query
     if status == "active":
@@ -295,6 +317,11 @@ def _render_employee_new_page(
     def v(key: str) -> str:
         return (form_values.get(key) or "").replace('"', '&quot;')
 
+    country_options = "".join(
+        f'<option value="{code}" {"selected" if v("selected_country") == code else ""}>{label}</option>'
+        for code, label in SUPPORTED_EPS_COUNTRIES
+    )
+
     content = f"""
     <div class="panel">
         <div class="panel-head"><h2>사원등록</h2><p>파일 선택 후 자동추출을 누르면 아래 입력값과 사진칸에 자동 반영됩니다.</p></div>
@@ -326,7 +353,7 @@ def _render_employee_new_page(
                     </div>
 
                     <div class="panel" style="box-shadow:none; border-radius:16px; background:#f8fbff;">
-                        <div class="panel-head"><h2 style="font-size:18px;">문서 업로드 / OCR 자동입력</h2><p>문서 업로드 후 자동추출을 누르면 아래 입력칸이 채워집니다.</p></div>
+                        <div class="panel-head"><h2 style="font-size:18px;">문서 업로드 / OCR 자동입력</h2><p>국가와 문서를 선택한 뒤 자동추출을 누르면 아래 입력칸이 채워집니다.</p></div>
                         <div class="panel-body">
                             {fill_notice}
                             <div class="form-grid">
@@ -337,6 +364,10 @@ def _render_employee_new_page(
                                         <option value="id_card" {"selected" if v("document_type") == "id_card" else ""}>ID 카드</option>
                                         <option value="other" {"selected" if v("document_type") == "other" else ""}>기타 문서</option>
                                     </select>
+                                </div>
+                                <div>
+                                    <label>국가 선택</label>
+                                    <select name="selected_country">{country_options}</select>
                                 </div>
                                 <div>
                                     <label>문서 파일</label>
@@ -496,6 +527,7 @@ def employee_new() -> str:
 
     form_values = {
         "document_type": request.values.get("document_type", "passport"),
+        "selected_country": request.values.get("selected_country", ""),
         "file_name": request.values.get("file_name", ""),
         "is_sensitive": request.values.get("is_sensitive", "Y"),
         "name": request.values.get("name", ""),
@@ -540,6 +572,7 @@ def employee_new() -> str:
                         employee_id=0,
                         document_type=form_values["document_type"],
                         upload_root=current_app.config["UPLOAD_FOLDER"],
+                        selected_country=form_values["selected_country"],
                     )
                     preview_path = extraction.photo_path or temp_relative_path
                     form_values["temp_file_path"] = temp_relative_path
@@ -555,6 +588,9 @@ def employee_new() -> str:
                         form_values["local_name"] = extraction.local_name
                     if extraction.nationality:
                         form_values["nationality"] = extraction.nationality
+                    elif form_values["selected_country"] and not form_values["nationality"]:
+                        country_map = dict(SUPPORTED_EPS_COUNTRIES)
+                        form_values["nationality"] = country_map.get(form_values["selected_country"], "")
                     if form_values["document_type"] == "passport":
                         if extraction.document_number:
                             form_values["passport_number"] = extraction.document_number

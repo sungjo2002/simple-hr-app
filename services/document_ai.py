@@ -45,6 +45,27 @@ NATIONALITY_MAP = {
 }
 
 
+COUNTRY_HINT_TO_NATIONALITY = {
+    "vietnam": "베트남",
+    "philippines": "필리핀",
+    "thailand": "태국",
+    "indonesia": "인도네시아",
+    "mongolia": "몽골",
+    "sri_lanka": "스리랑카",
+    "cambodia": "캄보디아",
+    "uzbekistan": "우즈베키스탄",
+    "pakistan": "파키스탄",
+    "myanmar": "미얀마",
+    "nepal": "네팔",
+    "bangladesh": "방글라데시",
+    "kyrgyzstan": "키르기스스탄",
+    "timor_leste": "동티모르",
+    "laos": "라오스",
+    "china": "중국",
+    "tajikistan": "타지키스탄",
+}
+
+
 def _clean_text(value: str) -> str:
     return re.sub(r"[\u0000-\u001f]+", " ", value or "").strip()
 
@@ -169,7 +190,7 @@ def _save_cropped_photo(image_path: str, employee_id: int, document_type: str, u
     return f"/uploads/profiles/{output_path.name}"
 
 
-def extract_document_data(*, file_path: str, employee_id: int, document_type: str, upload_root: str) -> ExtractionResult:
+def extract_document_data(*, file_path: str, employee_id: int, document_type: str, upload_root: str, selected_country: str = "") -> ExtractionResult:
     suffix = Path(file_path).suffix.lower()
     text = ""
     status = "stored"
@@ -187,6 +208,8 @@ def extract_document_data(*, file_path: str, employee_id: int, document_type: st
     mrz_data = _extract_from_mrz(text)
     generic_data = _extract_generic(text, document_type)
     merged: dict[str, Any] = {**generic_data, **mrz_data}
+    if selected_country and not merged.get("nationality"):
+        merged["nationality"] = COUNTRY_HINT_TO_NATIONALITY.get(selected_country, "")
     photo_path = ""
     if suffix in {".png", ".jpg", ".jpeg", ".webp"}:
         photo_path = _save_cropped_photo(file_path, employee_id, document_type, upload_root)
