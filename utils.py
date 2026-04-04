@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 from calendar import monthrange
-import re
 from datetime import date, datetime
 from typing import Any
 
-from flask import Response, render_template_string, request, url_for
+from flask import render_template_string
 
 from models import AttendanceRecord, ClientCompany, ClientCompanyPayrollSetting, ClientCompanySetting, ClientCompanyWorkType, Employee, EmployeeDocument, OurBusiness, db
 
@@ -29,92 +28,6 @@ PAY_TYPE_LABELS = {
     "daily": "일급제",
     "hourly": "시급제",
 }
-
-
-
-
-def digits_only(value: str | None) -> str:
-    return re.sub(r"\D", "", value or "")
-
-
-def format_business_number(value: str | None) -> str:
-    digits = digits_only(value)[:10]
-    if len(digits) <= 3:
-        return digits
-    if len(digits) <= 5:
-        return f"{digits[:3]}-{digits[3:]}"
-    return f"{digits[:3]}-{digits[3:5]}-{digits[5:]}"
-
-
-def format_phone_number(value: str | None) -> str:
-    digits = digits_only(value)[:11]
-    if not digits:
-        return ""
-    if digits.startswith("02"):
-        if len(digits) <= 2:
-            return digits
-        if len(digits) <= 5:
-            return f"{digits[:2]}-{digits[2:]}"
-        if len(digits) <= 9:
-            return f"{digits[:2]}-{digits[2:5]}-{digits[5:]}"
-        return f"{digits[:2]}-{digits[2:6]}-{digits[6:]}"
-    if len(digits) <= 3:
-        return digits
-    if len(digits) <= 6:
-        return f"{digits[:3]}-{digits[3:]}"
-    if len(digits) <= 10:
-        return f"{digits[:3]}-{digits[3:6]}-{digits[6:]}"
-    return f"{digits[:3]}-{digits[3:7]}-{digits[7:]}"
-
-SECTION_META = {
-    "home": {"label": "홈", "href": "/"},
-    "employees": {"label": "직원관리", "href": "/employees"},
-    "attendance": {"label": "근태관리", "href": "/attendance"},
-    "client_companies": {"label": "거래처관리", "href": "/client-companies"},
-    "our_businesses": {"label": "사업자관리", "href": "/our-businesses"},
-    "records": {"label": "기록조회", "href": "/records"},
-    "payroll": {"label": "급여관리", "href": "/payroll"},
-    "settings": {"label": "설정", "href": "/settings"},
-}
-
-
-def build_breadcrumbs(title: str, active: str) -> list[dict[str, str | bool]]:
-    section = SECTION_META.get(active)
-    breadcrumbs: list[dict[str, str | bool]] = [{"label": "홈", "href": "/", "current": active == "home"}]
-    if section and active != "home":
-        breadcrumbs.append({"label": str(section["label"]), "href": str(section["href"]), "current": title == section["label"]})
-    if not section:
-        breadcrumbs.append({"label": title, "href": "", "current": True})
-    elif title != section["label"]:
-        breadcrumbs.append({"label": title, "href": "", "current": True})
-    return breadcrumbs
-
-
-def build_page_status(title: str, active: str) -> list[str]:
-    status_items: list[str] = []
-
-    if request.args.get("q"):
-        status_items.append(f"검색: {request.args.get('q', '').strip()}")
-    if request.args.get("sort"):
-        direction_label = "오름차순" if request.args.get("direction", "asc") == "asc" else "내림차순"
-        status_items.append(f"정렬: {request.args.get('sort')} · {direction_label}")
-    if request.args.get("page"):
-        status_items.append(f"페이지: {request.args.get('page')}")
-    if request.args.get("work_date"):
-        status_items.append(f"기준일: {request.args.get('work_date')}")
-    if request.args.get("month"):
-        status_items.append(f"기준월: {request.args.get('month')}")
-    if request.args.get("client_company_id"):
-        status_items.append("거래처 필터 적용")
-    if request.args.get("export"):
-        status_items.append(f"내보내기: {request.args.get('export').upper()}")
-
-    if not status_items:
-        section = SECTION_META.get(active)
-        if section and title != section["label"]:
-            status_items.append(str(section["label"]))
-        status_items.append(f"현재 화면: {title}")
-    return status_items
 
 
 def today_str() -> str:
@@ -302,120 +215,6 @@ BASE_HTML = """
         width:min(100%,1220px);
         margin:0 auto;
         padding:clamp(14px,2vw,20px);
-    }
-
-    .page-meta {
-        display:flex;
-        flex-direction:column;
-        gap:12px;
-        margin-bottom:16px;
-    }
-    .breadcrumbs {
-        display:flex;
-        flex-wrap:wrap;
-        gap:8px;
-        align-items:center;
-        color:var(--muted);
-        font-size:13px;
-        font-weight:700;
-    }
-    .breadcrumbs a {
-        color:var(--muted);
-        text-decoration:none;
-    }
-    .breadcrumbs a:hover {
-        color:var(--primary);
-    }
-    .breadcrumb-sep {
-        color:#94a3b8;
-    }
-    .breadcrumbs .current {
-        color:var(--text);
-    }
-    .page-status {
-        display:flex;
-        flex-wrap:wrap;
-        gap:8px;
-    }
-    .status-pill {
-        display:inline-flex;
-        align-items:center;
-        gap:6px;
-        padding:8px 12px;
-        border-radius:999px;
-        background:#fff;
-        border:1px solid var(--line);
-        color:#334155;
-        font-size:12px;
-        font-weight:800;
-        box-shadow:var(--shadow-soft);
-    }
-    .toast-stack {
-        position:fixed;
-        right:18px;
-        bottom:18px;
-        z-index:60;
-        display:flex;
-        flex-direction:column;
-        gap:10px;
-        width:min(360px, calc(100vw - 32px));
-    }
-    .toast {
-        display:flex;
-        gap:10px;
-        align-items:flex-start;
-        padding:14px 16px;
-        border-radius:16px;
-        border:1px solid var(--line);
-        background:#fff;
-        box-shadow:0 18px 32px rgba(15, 23, 42, .14);
-        animation:toast-in .22s ease;
-    }
-    .toast-success { border-color:rgba(22,163,74,.22); background:#f0fdf4; }
-    .toast-error { border-color:rgba(220,38,38,.22); background:#fef2f2; }
-    .toast-info { border-color:rgba(2,132,199,.22); background:#eff6ff; }
-    .toast-icon {
-        width:24px;
-        height:24px;
-        border-radius:999px;
-        display:inline-flex;
-        align-items:center;
-        justify-content:center;
-        font-size:12px;
-        font-weight:800;
-        flex:none;
-    }
-    .toast-success .toast-icon { background:#dcfce7; color:#166534; }
-    .toast-error .toast-icon { background:#fee2e2; color:#991b1b; }
-    .toast-info .toast-icon { background:#dbeafe; color:#1d4ed8; }
-    .toast-text {
-        display:flex;
-        flex-direction:column;
-        gap:4px;
-    }
-    .toast-title {
-        font-size:13px;
-        font-weight:800;
-        color:var(--text);
-    }
-    .toast-message {
-        font-size:13px;
-        color:#475569;
-        line-height:1.45;
-    }
-    .toast-close {
-        margin-left:auto;
-        border:0;
-        background:transparent;
-        color:#64748b;
-        cursor:pointer;
-        font-size:16px;
-        line-height:1;
-        padding:0;
-    }
-    @keyframes toast-in {
-        from { opacity:0; transform:translateY(12px); }
-        to { opacity:1; transform:translateY(0); }
     }
      .cards {
         display:grid;
@@ -626,8 +425,6 @@ BASE_HTML = """
     .btn-primary:hover, .btn-primary:focus-visible { background:#1e40af; }
     .btn-green { background:var(--green); color:white; }
     .btn-green:hover, .btn-green:focus-visible { background:#15803d; }
-    .btn-danger { background:#dc2626; color:white; box-shadow:0 10px 18px rgba(220,38,38,.18); }
-    .btn-danger:hover, .btn-danger:focus-visible { background:#b91c1c; }
     .btn-white { background:white; color:var(--text); border-color:#c8d0da; }
     .btn-white:hover, .btn-white:focus-visible { color:var(--primary); border-color:#93c5fd; background:#f8fbff; }
     .btn:active { transform:translateY(0); }
@@ -789,94 +586,6 @@ BASE_HTML = """
         .panel-head { flex-direction:column; align-items:flex-start; }
         .panel-head-actions { width:100%; justify-content:flex-start; }
     }
-
-    .list-toolbar {
-        display:flex;
-        gap:12px;
-        justify-content:space-between;
-        align-items:flex-end;
-        flex-wrap:wrap;
-        margin:0 0 16px;
-        padding:14px;
-        border:1px solid #dbe4ef;
-        border-radius:16px;
-        background:#f8fbff;
-    }
-    .toolbar-form {
-        display:flex;
-        gap:10px;
-        flex-wrap:wrap;
-        align-items:end;
-        flex:1 1 720px;
-    }
-    .toolbar-form > div { min-width:140px; }
-    .toolbar-search { flex:1 1 260px; min-width:220px; }
-    .toolbar-actions, .toolbar-side-actions {
-        display:flex;
-        gap:8px;
-        flex-wrap:wrap;
-        align-items:center;
-    }
-    .toolbar-side-actions { justify-content:flex-end; }
-    .pagination-wrap {
-        display:flex;
-        align-items:center;
-        justify-content:space-between;
-        gap:12px;
-        flex-wrap:wrap;
-        margin-top:16px;
-    }
-    .pagination {
-        display:flex;
-        gap:8px;
-        flex-wrap:wrap;
-    }
-    .pagination-link {
-        display:inline-flex;
-        align-items:center;
-        justify-content:center;
-        min-width:38px;
-        height:38px;
-        border-radius:10px;
-        border:1px solid var(--line);
-        background:#fff;
-        color:var(--text);
-        text-decoration:none;
-        font-weight:700;
-    }
-    .pagination-link.active {
-        background:var(--primary);
-        color:#fff;
-        border-color:var(--primary);
-    }
-    .table-meta {
-        font-size:13px;
-        color:var(--muted);
-        font-weight:700;
-    }
-
-
-.drilldown-panel{margin-top:18px;padding-top:16px;border-top:1px solid #e5e7eb;}
-.drilldown-panel-highlight{padding:18px;border:1px solid #dbeafe;border-radius:18px;background:linear-gradient(180deg,#f8fbff 0%,#eef5ff 100%);box-shadow:0 10px 24px rgba(37,99,235,.08);}
-.drilldown-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px;}
-.drilldown-title{font-size:14px;font-weight:800;color:#0f172a;margin-bottom:6px;}
-.drilldown-actions{display:flex;flex-wrap:wrap;gap:8px;}
-.drilldown-actions-prominent{gap:10px;}
-.drilldown-hint{margin-top:8px;font-size:12px;color:#64748b;}
-.drilldown-summary-row{display:flex;justify-content:space-between;align-items:center;gap:16px;flex-wrap:wrap;}
-.drilldown-badge{display:inline-flex;align-items:center;justify-content:center;padding:7px 12px;border-radius:999px;background:#dbeafe;color:#1d4ed8;font-size:12px;font-weight:800;border:1px solid #bfdbfe;}
-.btn-drill{background:#fff;color:#0f172a;border-color:#cbd5e1;box-shadow:0 8px 18px rgba(15,23,42,.08);}
-.btn-drill:hover,.btn-drill:focus-visible{border-color:#93c5fd;background:#f8fbff;color:#1d4ed8;}
-.btn-drill-primary{background:linear-gradient(180deg,#2563eb 0%,#1d4ed8 100%);color:#fff;border-color:#1d4ed8;box-shadow:0 12px 20px rgba(37,99,235,.22);}
-.btn-drill-primary:hover,.btn-drill-primary:focus-visible{background:linear-gradient(180deg,#1d4ed8 0%,#1e40af 100%);color:#fff;border-color:#1e40af;}
-.drill-actions-cell{white-space:nowrap;}
-.table-mini-link{display:inline-flex;align-items:center;justify-content:center;padding:7px 11px;border-radius:999px;border:1px solid #dbe4f0;background:#fff;color:#1d4ed8;font-size:12px;font-weight:800;margin-right:6px;margin-bottom:6px;text-decoration:none;box-shadow:0 3px 8px rgba(15,23,42,.04);}
-.table-mini-link:hover{background:#eff6ff;border-color:#bfdbfe;}
-.table-mini-link.strong{background:#eff6ff;border-color:#bfdbfe;color:#1d4ed8;}
-@media (max-width: 980px){
-    .drilldown-actions,.drilldown-actions-prominent{width:100%;}
-    .drilldown-actions .btn,.drilldown-actions-prominent .btn{flex:1 1 160px;text-align:center;}
-}
 </style>
 </head>
 <body>
@@ -917,51 +626,7 @@ BASE_HTML = """
         </div>
         {% endif %}
     </div>
-    <div class="wrap">
-        {% if breadcrumbs or page_status %}
-        <div class="page-meta">
-            {% if breadcrumbs %}
-            <nav class="breadcrumbs" aria-label="breadcrumb">
-                {% for item in breadcrumbs %}
-                    {% if not loop.first %}<span class="breadcrumb-sep">/</span>{% endif %}
-                    {% if item.current %}
-                        <span class="current">{{ item.label }}</span>
-                    {% else %}
-                        <a href="{{ item.href }}">{{ item.label }}</a>
-                    {% endif %}
-                {% endfor %}
-            </nav>
-            {% endif %}
-            {% if page_status %}
-            <div class="page-status">
-                {% for item in page_status %}
-                <span class="status-pill">{{ item }}</span>
-                {% endfor %}
-            </div>
-            {% endif %}
-        </div>
-        {% endif %}
-        {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-            <div class="toast-stack" aria-live="polite" aria-atomic="true">
-                {% for category, message in messages %}
-                <div class="toast toast-{{ category if category in ['success', 'error', 'info'] else 'info' }}" data-toast>
-                    <div class="toast-icon">
-                        {{ '완료' if category == 'success' else '오류' if category == 'error' else '안내' }}
-                    </div>
-                    <div class="toast-text">
-                        <div class="toast-title">
-                            {{ '저장 완료' if category == 'success' else '오류 발생' if category == 'error' else '안내' }}
-                        </div>
-                        <div class="toast-message">{{ message }}</div>
-                    </div>
-                    <button class="toast-close" type="button" aria-label="닫기" data-toast-close>&times;</button>
-                </div>
-                {% endfor %}
-            </div>
-            {% endif %}
-        {% endwith %}
-        {{ content|safe }}</div>
+    <div class="wrap">{{ content|safe }}</div>
 <script>
 (function () {
     function enableDragScroll(element) {
@@ -1024,24 +689,7 @@ BASE_HTML = """
     }
 
     document.querySelectorAll(".js-drag-scroll").forEach(enableDragScroll);
-    function enableToasts() {
-        document.querySelectorAll("[data-toast]").forEach(function (toast) {
-            const closeButton = toast.querySelector("[data-toast-close]");
-            if (closeButton) {
-                closeButton.addEventListener("click", function () {
-                    toast.remove();
-                });
-            }
-            window.setTimeout(function () {
-                if (toast && toast.parentNode) {
-                    toast.remove();
-                }
-            }, 3200);
-        });
-    }
-
     enableKeepScroll();
-    enableToasts();
 })();
 </script>
 </body>
@@ -1049,150 +697,14 @@ BASE_HTML = """
 """
 
 
-def render_page(
-    title: str,
-    active: str,
-    content: str,
-    quick_links: list[dict[str, str]] | None = None,
-    breadcrumbs: list[dict[str, str | bool]] | None = None,
-    page_status: list[str] | None = None,
-) -> str:
+def render_page(title: str, active: str, content: str, quick_links: list[dict[str, str]] | None = None) -> str:
     return render_template_string(
         BASE_HTML,
         title=title,
         active=active,
         content=content,
         quick_links=quick_links or [],
-        breadcrumbs=breadcrumbs or build_breadcrumbs(title, active),
-        page_status=page_status or build_page_status(title, active),
     )
-
-
-def sort_items(items: list[Any], sort_key: str, sort_funcs: dict[str, Any], direction: str = "asc") -> list[Any]:
-    key_func = sort_funcs.get(sort_key) or next(iter(sort_funcs.values()))
-    reverse = direction == "desc"
-    return sorted(items, key=key_func, reverse=reverse)
-
-
-def paginate_items(items: list[Any], page: int, per_page: int) -> tuple[list[Any], int, int]:
-    total_count = len(items)
-    total_pages = max(1, (total_count + per_page - 1) // per_page)
-    page = min(max(page, 1), total_pages)
-    start = (page - 1) * per_page
-    end = start + per_page
-    return items[start:end], total_count, total_pages
-
-
-def update_query_params(params: dict[str, Any], **changes: Any) -> str:
-    merged = {key: value for key, value in params.items() if value not in (None, "", [])}
-    for key, value in changes.items():
-        if value in (None, ""):
-            merged.pop(key, None)
-        else:
-            merged[key] = value
-    from urllib.parse import urlencode
-    query = urlencode(merged)
-    return f"?{query}" if query else ""
-
-
-def render_table_toolbar(
-    *,
-    base_path: str,
-    current_params: dict[str, Any],
-    search_placeholder: str,
-    search_value: str,
-    sort_options: list[tuple[str, str]],
-    current_sort: str,
-    current_direction: str,
-    create_href: str | None = None,
-    create_label: str | None = None,
-    reset_href: str | None = None,
-    filter_html: str = "",
-) -> str:
-    sort_option_html = "".join(
-        f'<option value="{value}" {"selected" if value == current_sort else ""}>{label}</option>'
-        for value, label in sort_options
-    )
-    export_csv_href = f"{base_path}{update_query_params(current_params, export='csv', page=1)}"
-    export_xlsx_href = f"{base_path}{update_query_params(current_params, export='xlsx', page=1)}"
-    create_html = f'<a class="btn btn-primary" href="{create_href}">{create_label}</a>' if create_href and create_label else ""
-    reset_html = f'<a class="btn btn-white" href="{reset_href or base_path}">초기화</a>'
-    return f"""
-    <div class="list-toolbar">
-        <form method="get" class="toolbar-form">
-            <div class="toolbar-search"><label>검색</label><input type="text" name="q" value="{search_value}" placeholder="{search_placeholder}"></div>
-            <div><label>정렬</label><select name="sort">{sort_option_html}</select></div>
-            <div><label>방향</label><select name="direction"><option value="asc" {"selected" if current_direction == "asc" else ""}>오름차순</option><option value="desc" {"selected" if current_direction == "desc" else ""}>내림차순</option></select></div>
-            {filter_html}
-            <input type="hidden" name="page" value="1">
-            <div class="toolbar-actions"><button class="btn btn-white" type="submit">적용</button>{reset_html}</div>
-        </form>
-        <div class="toolbar-side-actions">
-            <a class="btn btn-white" href="{export_csv_href}">CSV 내보내기</a>
-            <a class="btn btn-white" href="{export_xlsx_href}">Excel 내보내기</a>
-            {create_html}
-        </div>
-    </div>
-    """
-
-
-def render_pagination(base_path: str, current_params: dict[str, Any], page: int, total_pages: int, total_count: int) -> str:
-    if total_pages <= 1:
-        return f'<div class="table-meta">총 {total_count}건</div>'
-    links: list[str] = []
-    for target_page in range(1, total_pages + 1):
-        css = "pagination-link active" if target_page == page else "pagination-link"
-        href = f"{base_path}{update_query_params(current_params, page=target_page)}"
-        links.append(f'<a class="{css}" href="{href}">{target_page}</a>')
-    return f"""
-    <div class="pagination-wrap">
-        <div class="table-meta">총 {total_count}건 · {page}/{total_pages} 페이지</div>
-        <div class="pagination">{''.join(links)}</div>
-    </div>
-    """
-
-
-def build_csv_response(filename: str, headers: list[str], rows: list[list[Any]]) -> Response:
-    import csv
-    import io
-    buffer = io.StringIO()
-    writer = csv.writer(buffer)
-    writer.writerow(headers)
-    writer.writerows(rows)
-    data = buffer.getvalue()
-    return Response(
-        data,
-        mimetype="text/csv; charset=utf-8-sig",
-        headers={"Content-Disposition": f'attachment; filename="{filename}.csv"'},
-    )
-
-
-def build_excel_response(filename: str, sheet_name: str, headers: list[str], rows: list[list[Any]]) -> Response:
-    from io import BytesIO
-    from openpyxl import Workbook
-
-    workbook = Workbook()
-    worksheet = workbook.active
-    worksheet.title = sheet_name[:31] or "Sheet1"
-    worksheet.append(headers)
-    for row in rows:
-        worksheet.append(row)
-    output = BytesIO()
-    workbook.save(output)
-    output.seek(0)
-    return Response(
-        output.getvalue(),
-        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f'attachment; filename="{filename}.xlsx"'},
-    )
-
-
-def export_table(filename: str, sheet_name: str, headers: list[str], rows: list[list[Any]], export_format: str) -> Response | None:
-    if export_format == "csv":
-        return build_csv_response(filename, headers, rows)
-    if export_format == "xlsx":
-        return build_excel_response(filename, sheet_name, headers, rows)
-    return None
 
 
 def get_our_business(our_business_id: int) -> OurBusiness | None:
@@ -1267,10 +779,12 @@ def get_display_status(employee_id: int, work_date: str) -> str:
     return record.status if record else "before_work"
 
 
-def get_employees_by_client_company(client_company_id: int | None) -> list[Employee]:
+def get_employees_by_client_company(client_company_id: int | None, keyword: str = "") -> list[Employee]:
     query = Employee.query
     if client_company_id is not None:
         query = query.filter_by(current_client_company_id=client_company_id)
+    if keyword:
+        query = query.filter(Employee.name.ilike(f"%{keyword}%"))
     return query.order_by(Employee.id.asc()).all()
 
 

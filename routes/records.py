@@ -4,25 +4,7 @@ from datetime import date
 from flask import Blueprint, request
 
 from models import AttendanceRecord, ClientCompany
-from utils import (
-    export_table,
-    get_client_company_name,
-    get_day_mark,
-    get_employee,
-    get_employees_by_client_company,
-    get_month_attendance_map,
-    get_our_business_name,
-    get_work_type_name,
-    month_str_default,
-    paginate_items,
-    parse_date,
-    parse_month,
-    render_page,
-    render_pagination,
-    render_table_toolbar,
-    sort_items,
-    status_badge,
-)
+from utils import get_client_company_name, get_day_mark, get_employee, get_employees_by_client_company, get_month_attendance_map, get_our_business_name, get_work_type_name, month_str_default, parse_date, parse_month, render_page, status_badge
 
 records_bp = Blueprint("records", __name__)
 
@@ -33,12 +15,6 @@ def records_page() -> str:
     selected_client_company_id = int(selected_client_raw) if selected_client_raw.isdigit() else None
     selected_month = request.args.get("month", month_str_default())
     selected_tab = request.args.get("tab", "all")
-    q = request.args.get("q", "").strip()
-    sort = request.args.get("sort", "date" if selected_tab == "all" else "name")
-    direction = request.args.get("direction", "desc" if selected_tab == "all" else "asc")
-    page_raw = request.args.get("page", "1")
-    export_format = request.args.get("export", "").strip().lower()
-    page = int(page_raw) if page_raw.isdigit() else 1
     year, month = parse_month(selected_month)
 
     client_filter_options = ['<option value="">전체 거래처</option>']
@@ -51,117 +27,54 @@ def records_page() -> str:
         <div class="panel-body">
             <form method="get" class="actions" style="margin-top:0;">
                 <input type="hidden" name="tab" value="{selected_tab}">
-                <div><label>거래처 필터</label><select name="client_company_id">{''.join(client_filter_options)}</select></div>
+                <div><label>거래처 필터</label><select name="client_company_id">{"".join(client_filter_options)}</select></div>
                 <div><label>월 선택</label><input type="month" name="month" value="{selected_month}"></div>
-                <input type="hidden" name="q" value="{q}">
-                <input type="hidden" name="sort" value="{sort}">
-                <input type="hidden" name="direction" value="{direction}">
                 <div><button class="btn btn-white" type="submit">조회</button></div>
             </form>
         </div>
     </div>
     """
 
-    base_params = {"tab": selected_tab, "client_company_id": selected_client_raw, "month": selected_month, "q": q, "sort": sort, "direction": direction}
-
     if selected_tab == "monthly":
         days_in_month = monthrange(year, month)[1]
         employees_for_grid = get_employees_by_client_company(selected_client_company_id)
-        monthly_rows = []
+        header_days = "".join(f"<th>{day}</th>" for day in range(1, days_in_month + 1))
+        month_rows = ""
         for employee in employees_for_grid:
             monthly_map = get_month_attendance_map(employee.id, year, month)
             present_cnt = hospital_cnt = absent_cnt = vacation_cnt = off_cnt = 0
-            day_values = []
+            month_rows += f'<tr><td class="name-col"><a href="/employees/{employee.id}">{employee.name}</a></td><td class="nation-col">{employee.nationality}</td>'
             for day_num in range(1, days_in_month + 1):
                 record = monthly_map.get(day_num)
                 day_mark = get_day_mark(record)
                 weekday = date(year, month, day_num).weekday()
                 if day_mark == "O":
                     present_cnt += 1
-                    day_values.append("O")
+                    month_rows += "<td>O</td>"
                 elif day_mark == "H":
                     hospital_cnt += 1
-                    day_values.append("H")
+                    month_rows += "<td>H</td>"
                 elif day_mark == "X":
                     absent_cnt += 1
-                    day_values.append("X")
+                    month_rows += "<td>X</td>"
                 elif day_mark == "V":
                     vacation_cnt += 1
-                    day_values.append("V")
+                    month_rows += "<td>V</td>"
                 else:
                     if weekday >= 5:
                         off_cnt += 1
-                        day_values.append("-")
+                        month_rows += "<td>-</td>"
                     else:
-                        day_values.append("")
-            monthly_rows.append({
-                "employee": employee,
-                "day_values": day_values,
-                "present_cnt": present_cnt,
-                "hospital_cnt": hospital_cnt,
-                "vacation_cnt": vacation_cnt,
-                "absent_cnt": absent_cnt,
-                "off_cnt": off_cnt,
-            })
-
-        if q:
-            q_lower = q.lower()
-            monthly_rows = [
-                row for row in monthly_rows
-                if q_lower in row["employee"].name.lower()
-                or q_lower in row["employee"].nationality.lower()
-            ]
-
-        sort_funcs = {
-            "name": lambda row: row["employee"].name.lower(),
-            "nationality": lambda row: row["employee"].nationality.lower(),
-            "present": lambda row: row["present_cnt"],
-            "hospital": lambda row: row["hospital_cnt"],
-            "vacation": lambda row: row["vacation_cnt"],
-            "absent": lambda row: row["absent_cnt"],
-        }
-        monthly_rows = sort_items(monthly_rows, sort, sort_funcs, direction)
-
-        export_headers = ["이름", "국적"] + [str(day) for day in range(1, days_in_month + 1)] + ["출근", "병원", "휴가", "결근", "휴무"]
-        export_rows = [
-            [row["employee"].name, row["employee"].nationality, *row["day_values"], row["present_cnt"], row["hospital_cnt"], row["vacation_cnt"], row["absent_cnt"], row["off_cnt"]]
-            for row in monthly_rows
-        ]
-        export_response = export_table("monthly_records", "월별출석현황", export_headers, export_rows, export_format)
-        if export_response:
-            return export_response
-
-        paged_rows, total_count, total_pages = paginate_items(monthly_rows, page, 10)
-        header_days = "".join(f"<th>{day}</th>" for day in range(1, days_in_month + 1))
-        month_rows_html = ""
-        for row in paged_rows:
-            employee = row["employee"]
-            month_rows_html += f'<tr><td class="name-col"><a href="/employees/{employee.id}">{employee.name}</a></td><td class="nation-col">{employee.nationality}</td>'
-            for value in row["day_values"]:
-                month_rows_html += f"<td>{value}</td>"
-            month_rows_html += f"<td>{row['present_cnt']}</td><td>{row['hospital_cnt']}</td><td>{row['vacation_cnt']}</td><td>{row['absent_cnt']}</td><td>{row['off_cnt']}</td></tr>"
-
-        toolbar = render_table_toolbar(
-            base_path="/records",
-            current_params=base_params,
-            search_placeholder="이름, 국적 검색",
-            search_value=q,
-            sort_options=[("name", "이름"), ("nationality", "국적"), ("present", "출근"), ("hospital", "병원"), ("vacation", "휴가"), ("absent", "결근")],
-            current_sort=sort,
-            current_direction=direction,
-            reset_href=f"/records?tab=monthly&client_company_id={selected_client_raw}&month={selected_month}",
-        ).replace('<input type="hidden" name="page" value="1">', f'<input type="hidden" name="page" value="1"><input type="hidden" name="tab" value="monthly"><input type="hidden" name="client_company_id" value="{selected_client_raw}"><input type="hidden" name="month" value="{selected_month}">')
-        pagination = render_pagination("/records", base_params, page, total_pages, total_count)
+                        month_rows += "<td></td>"
+            month_rows += f"<td>{present_cnt}</td><td>{hospital_cnt}</td><td>{vacation_cnt}</td><td>{absent_cnt}</td><td>{off_cnt}</td></tr>"
         tab_content = f"""
         <div class="panel">
             <div class="panel-head"><h2>월별 출석현황</h2><p>O=출근 / H=병원 / V=휴가 / X=결근 / -=휴무</p></div>
             <div class="panel-body month-grid">
-                {toolbar}
                 <table>
                     <thead><tr><th class="name-col">이름</th><th class="nation-col">국적</th>{header_days}<th>출근</th><th>병원</th><th>휴가</th><th>결근</th><th>휴무</th></tr></thead>
-                    <tbody>{month_rows_html or '<tr><td colspan="100">인력이 없습니다.</td></tr>'}</tbody>
+                    <tbody>{month_rows or '<tr><td colspan="100">인력이 없습니다.</td></tr>'}</tbody>
                 </table>
-                {pagination}
             </div>
         </div>
         """
@@ -169,70 +82,12 @@ def records_page() -> str:
         query = AttendanceRecord.query
         if selected_client_company_id is not None:
             query = query.filter_by(client_company_id=selected_client_company_id)
-        filtered_records = [
-            record for record in query.order_by(AttendanceRecord.work_date.desc(), AttendanceRecord.employee_id.asc()).all()
-            if parse_date(record.work_date).year == year and parse_date(record.work_date).month == month
-        ]
-        rows_data = []
+        filtered_records = [record for record in query.order_by(AttendanceRecord.work_date.desc(), AttendanceRecord.employee_id.asc()).all() if parse_date(record.work_date).year == year and parse_date(record.work_date).month == month]
+        record_rows = ""
         for index, record in enumerate(filtered_records, start=1):
             employee = get_employee(record.employee_id)
             if not employee:
                 continue
-            rows_data.append({
-                "index": index,
-                "record": record,
-                "employee": employee,
-            })
-
-        if q:
-            q_lower = q.lower()
-            rows_data = [
-                row for row in rows_data
-                if q_lower in row["record"].work_date.lower()
-                or q_lower in row["employee"].name.lower()
-                or q_lower in row["employee"].nationality.lower()
-                or q_lower in get_our_business_name(row["record"].our_business_id).lower()
-                or q_lower in get_client_company_name(row["record"].client_company_id).lower()
-                or q_lower in get_work_type_name(row["record"].work_type_id).lower()
-                or q_lower in row["record"].status.lower()
-                or q_lower in (row["record"].reason or "").lower()
-            ]
-
-        sort_funcs = {
-            "date": lambda row: row["record"].work_date,
-            "name": lambda row: row["employee"].name.lower(),
-            "nationality": lambda row: row["employee"].nationality.lower(),
-            "client_company": lambda row: get_client_company_name(row["record"].client_company_id).lower(),
-            "status": lambda row: row["record"].status,
-        }
-        rows_data = sort_items(rows_data, sort, sort_funcs, direction)
-
-        export_headers = ["번호", "날짜", "이름", "국적", "사업자", "거래처", "근무타입", "출근", "퇴근", "상태", "사유"]
-        export_rows = [
-            [
-                idx + 1,
-                row["record"].work_date,
-                row["employee"].name,
-                row["employee"].nationality,
-                get_our_business_name(row["record"].our_business_id),
-                get_client_company_name(row["record"].client_company_id),
-                get_work_type_name(row["record"].work_type_id),
-                row["record"].check_in_at or "-",
-                row["record"].check_out_at or "-",
-                row["record"].status,
-                row["record"].reason or "-",
-            ]
-            for idx, row in enumerate(rows_data)
-        ]
-        export_response = export_table("attendance_records", "근태조회", export_headers, export_rows, export_format)
-        if export_response:
-            return export_response
-
-        paged_rows, total_count, total_pages = paginate_items(rows_data, page, 10)
-        record_rows = ""
-        for index, row in enumerate(paged_rows, start=(page - 1) * 10 + 1):
-            record = row["record"]
-            employee = row["employee"]
             record_rows += f"""
             <tr>
                 <td>{index}</td>
@@ -248,28 +103,14 @@ def records_page() -> str:
                 <td>{record.reason or '-'}</td>
             </tr>
             """
-
-        toolbar = render_table_toolbar(
-            base_path="/records",
-            current_params=base_params,
-            search_placeholder="날짜, 이름, 국적, 거래처, 상태, 사유 검색",
-            search_value=q,
-            sort_options=[("date", "날짜"), ("name", "이름"), ("nationality", "국적"), ("client_company", "거래처"), ("status", "상태")],
-            current_sort=sort,
-            current_direction=direction,
-            reset_href=f"/records?tab=all&client_company_id={selected_client_raw}&month={selected_month}",
-        ).replace('<input type="hidden" name="page" value="1">', f'<input type="hidden" name="page" value="1"><input type="hidden" name="tab" value="all"><input type="hidden" name="client_company_id" value="{selected_client_raw}"><input type="hidden" name="month" value="{selected_month}">')
-        pagination = render_pagination("/records", base_params, page, total_pages, total_count)
         tab_content = f"""
         <div class="panel">
             <div class="panel-head"><h2>전체 출퇴기록</h2><p>{selected_month} 기준 실제 데이터 조회</p></div>
             <div class="panel-body">
-                {toolbar}
                 <table>
                     <thead><tr><th>번호</th><th>날짜</th><th>이름</th><th>국적</th><th>사업자</th><th>거래처</th><th>근무타입</th><th>출근</th><th>퇴근</th><th>상태</th><th>사유</th></tr></thead>
                     <tbody>{record_rows or '<tr><td colspan="11">기록이 없습니다.</td></tr>'}</tbody>
                 </table>
-                {pagination}
             </div>
         </div>
         """

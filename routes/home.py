@@ -51,27 +51,6 @@ def _home_url(
     return f"/?{urlencode(query)}"
 
 
-def _records_url(tab: str, current_date: str, client_company_id: int | None, employee_name: str = "") -> str:
-    query = {
-        "tab": tab,
-        "month": current_date[:7],
-        "client_company_id": client_company_id or "",
-        "q": employee_name,
-        "page": 1,
-    }
-    return f"/records?{urlencode(query)}"
-
-
-def _payroll_url(current_date: str, client_company_id: int | None, employee_name: str = "") -> str:
-    query = {
-        "month": current_date[:7],
-        "client_company_id": client_company_id or "",
-        "q": employee_name,
-        "page": 1,
-    }
-    return f"/payroll?{urlencode(query)}"
-
-
 @home_bp.route("/")
 def home() -> str:
     current_date = request.args.get("work_date", today_str())
@@ -131,23 +110,6 @@ def home() -> str:
             row_limit=row_limit,
             status_filter=status_filter,
         )
-        employee_records_href = _records_url(
-            "all",
-            current_date,
-            employee.current_client_company_id,
-            employee.name,
-        )
-        employee_monthly_href = _records_url(
-            "monthly",
-            current_date,
-            employee.current_client_company_id,
-            employee.name,
-        )
-        employee_payroll_href = _payroll_url(
-            current_date,
-            employee.current_client_company_id,
-            employee.name,
-        )
         rows += f"""
         <tr{row_style}>
             <td>{employee.id}</td>
@@ -157,15 +119,10 @@ def home() -> str:
             <td>{escape(get_client_company_name(employee.current_client_company_id))}</td>
             <td>{escape(get_work_type_name(employee.work_type_id))}</td>
             <td>{status_badge(get_display_status(employee.id, current_date))}</td>
-            <td class="drill-actions-cell">
-                <a class="table-mini-link" href="{employee_records_href}">상세기록</a>
-                <a class="table-mini-link" href="{employee_monthly_href}">월별현황</a>
-                <a class="table-mini-link strong" href="{employee_payroll_href}">급여대장</a>
-            </td>
         </tr>
         """
     if not rows:
-        rows = '<tr><td colspan="8">조건에 맞는 인력이 없습니다.</td></tr>'
+        rows = '<tr><td colspan="7">조건에 맞는 인력이 없습니다.</td></tr>'
 
     client_options = ['<option value="">전체 거래처</option>']
     for client in ClientCompany.query.order_by(ClientCompany.id.asc()).all():
@@ -182,34 +139,8 @@ def home() -> str:
     else:
         selected_employee_id = selected_employee.id if selected_employee else None
 
-    summary_records_href = _records_url("all", current_date, client_company_id, employee_keyword)
-    summary_monthly_href = _records_url("monthly", current_date, client_company_id, employee_keyword)
-    summary_payroll_href = _payroll_url(current_date, client_company_id, employee_keyword)
-    
     scorecard = calculate_employee_scorecard(selected_employee_id) if selected_employee_id else None
-    
-    detail_records_href = "#"
-    monthly_records_href = "#"
-    payroll_detail_href = "#"
-    if selected_employee:
-        detail_records_href = _records_url(
-            "all",
-            current_date,
-            selected_employee.current_client_company_id,
-            selected_employee.name,
-        )
-        monthly_records_href = _records_url(
-            "monthly",
-            current_date,
-            selected_employee.current_client_company_id,
-            selected_employee.name,
-        )
-        payroll_detail_href = _payroll_url(
-            current_date,
-            selected_employee.current_client_company_id,
-            selected_employee.name,
-        )
-    
+
     score_html = '<div class="empty-score">왼쪽에서 사원을 검색하거나 표의 이름을 누르면 인력 지표가 이곳에 표시됩니다.</div>'
     if selected_employee and scorecard:
         work_score = scorecard["work_score"]
@@ -250,21 +181,6 @@ def home() -> str:
                 <div class="legend-item">
                     <div class="legend-title">근무 타입</div>
                     <div class="legend-value">{escape(get_work_type_name(selected_employee.work_type_id))}</div>
-                </div>
-            </div>
-            <div class="drilldown-panel drilldown-panel-highlight">
-                <div class="drilldown-head">
-                    <div>
-                        <div class="drilldown-title">선택 인력 바로가기</div>
-                        <div class="drilldown-hint">선택된 인력과 기준월을 그대로 넘겨 상세 화면으로 바로 이동합니다.</div>
-                    </div>
-                    <span class="drilldown-badge">선택 인력 기준</span>
-                </div>
-                <div class="drilldown-actions">
-                    <a class="btn btn-drill" href="{detail_records_href}">상세기록</a>
-                    <a class="btn btn-drill" href="{monthly_records_href}">월별현황</a>
-                    <a class="btn btn-drill btn-drill-primary" href="{payroll_detail_href}">급여대장</a>
-                    <a class="btn btn-white" href="/employees/{selected_employee.id}">사원정보</a>
                 </div>
             </div>
         </div>
@@ -360,22 +276,6 @@ def home() -> str:
         {"".join(cards_html)}
     </div>
 
-    <div class="drilldown-summary panel" style="margin-bottom:18px;">
-        <div class="panel-body">
-            <div class="drilldown-summary-row">
-                <div>
-                    <div class="drilldown-title">빠른 이동</div>
-                    <div class="drilldown-hint">현재 조회일, 거래처, 검색조건을 유지한 채 바로 아래 기록·월별·급여 화면으로 이동합니다.</div>
-                </div>
-                <div class="drilldown-actions drilldown-actions-prominent">
-                    <a class="btn btn-drill" href="{summary_records_href}">상세기록</a>
-                    <a class="btn btn-drill" href="{summary_monthly_href}">월별현황</a>
-                    <a class="btn btn-drill btn-drill-primary" href="{summary_payroll_href}">급여대장</a>
-                </div>
-            </div>
-        </div>
-    </div>
-
     <div class="home-grid">
         <div>
             <div class="panel" style="margin-bottom:18px;">
@@ -429,7 +329,7 @@ def home() -> str:
             <div class="panel-body">
                 <div class="table-scroll js-drag-scroll" style="max-height:{table_max_height}px;">
                     <table>
-                        <thead><tr><th>번호</th><th>이름</th><th>국적</th><th>사업자</th><th>거래처</th><th>근무타입</th><th>상태</th><th>바로가기</th></tr></thead>
+                        <thead><tr><th>번호</th><th>이름</th><th>국적</th><th>사업자</th><th>거래처</th><th>근무타입</th><th>상태</th></tr></thead>
                         <tbody>{rows}</tbody>
                     </table>
                 </div>
@@ -438,14 +338,4 @@ def home() -> str:
         </div>
     </div>
     """
-    return render_page(
-        "홈",
-        "home",
-        content,
-        page_status=[
-            f"조회일 {current_date}",
-            f"거래처 {escape(get_client_company_name(client_company_id)) if client_company_id else '전체'}",
-            f"상태 {filter_title}",
-            f"표시 {shown_count} / {visible_count}명",
-        ],
-    )
+    return render_page("홈", "home", content)

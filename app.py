@@ -1,7 +1,6 @@
 import os
 
 from flask import Flask
-from sqlalchemy import inspect, text
 
 from models import db
 from routes.attendance import attendance_bp
@@ -20,26 +19,6 @@ def _get_database_uri() -> str:
     if database_url:
         return database_url.replace("postgres://", "postgresql://", 1)
     return "sqlite:///hr.db"
-
-
-def _ensure_employee_retirement_columns() -> None:
-    inspector = inspect(db.engine)
-    column_names = {column["name"] for column in inspector.get_columns("employees")}
-    statements = []
-    if "retirement_date" not in column_names:
-        statements.append("ALTER TABLE employees ADD COLUMN retirement_date VARCHAR(10) NOT NULL DEFAULT ''")
-    if "retirement_reason" not in column_names:
-        statements.append("ALTER TABLE employees ADD COLUMN retirement_reason TEXT NOT NULL DEFAULT ''")
-    if "recontact_target" not in column_names:
-        statements.append("ALTER TABLE employees ADD COLUMN recontact_target VARCHAR(1) NOT NULL DEFAULT 'N'")
-    if "next_contact_date" not in column_names:
-        statements.append("ALTER TABLE employees ADD COLUMN next_contact_date VARCHAR(10) NOT NULL DEFAULT ''")
-    if "retirement_note" not in column_names:
-        statements.append("ALTER TABLE employees ADD COLUMN retirement_note TEXT NOT NULL DEFAULT ''")
-    for statement in statements:
-        db.session.execute(text(statement))
-    if statements:
-        db.session.commit()
 
 
 def create_app() -> Flask:
@@ -61,7 +40,6 @@ def create_app() -> Flask:
 
     with app.app_context():
         db.create_all()
-        _ensure_employee_retirement_columns()
         if os.getenv("SEED_DATABASE", "true").lower() == "true":
             seed_database()
 
