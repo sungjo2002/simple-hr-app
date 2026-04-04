@@ -1107,6 +1107,7 @@ def render_table_toolbar(
     create_href: str | None = None,
     create_label: str | None = None,
     reset_href: str | None = None,
+    filter_html: str = "",
 ) -> str:
     sort_option_html = "".join(
         f'<option value="{value}" {"selected" if value == current_sort else ""}>{label}</option>'
@@ -1122,6 +1123,7 @@ def render_table_toolbar(
             <div class="toolbar-search"><label>검색</label><input type="text" name="q" value="{search_value}" placeholder="{search_placeholder}"></div>
             <div><label>정렬</label><select name="sort">{sort_option_html}</select></div>
             <div><label>방향</label><select name="direction"><option value="asc" {"selected" if current_direction == "asc" else ""}>오름차순</option><option value="desc" {"selected" if current_direction == "desc" else ""}>내림차순</option></select></div>
+            {filter_html}
             <input type="hidden" name="page" value="1">
             <div class="toolbar-actions"><button class="btn btn-white" type="submit">적용</button>{reset_html}</div>
         </form>
