@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 from uuid import uuid4
 
-from flask import Blueprint, current_app, redirect, render_template_string, request, url_for
+from flask import Blueprint, current_app, jsonify, redirect, render_template_string, request, url_for
 from werkzeug.utils import secure_filename
 
 from models import AttendanceRecord, ClientCompany, Employee, EmployeeDocument, OurBusiness, db
@@ -135,6 +135,24 @@ def _store_uploaded_file(employee_id: int):
 
     safe_name = secure_filename(file.filename) or f"employee_{employee_id}{extension}"
     save_dir = Path(current_app.config["UPLOAD_FOLDER"]) / "employee_documents" / str(employee_id)
+    save_dir.mkdir(parents=True, exist_ok=True)
+    save_name = f"{uuid4().hex}_{safe_name}"
+    save_path = save_dir / save_name
+    file.save(save_path)
+    return save_path, ""
+
+
+
+def _store_temp_preview_file():
+    file = request.files.get("document_file")
+    if not file or not file.filename:
+        return None, "파일을 선택하세요."
+    extension = Path(file.filename).suffix.lower()
+    if extension not in ALLOWED_UPLOAD_EXTENSIONS:
+        return None, "PNG, JPG, WEBP, PDF만 업로드할 수 있습니다."
+
+    safe_name = secure_filename(file.filename) or f"preview{extension}"
+    save_dir = Path(current_app.config["UPLOAD_FOLDER"]) / "tmp_document_preview"
     save_dir.mkdir(parents=True, exist_ok=True)
     save_name = f"{uuid4().hex}_{safe_name}"
     save_path = save_dir / save_name
@@ -289,6 +307,46 @@ def retired_employees_page() -> str:
     return render_page("퇴사자관리", "employees", content, _employee_quick("retired"))
 
 
+
+@employees_bp.route("/employees/document-preview", methods=["POST"])
+def employee_document_preview():
+    document_type = request.form.get("document_type", "other")
+    save_path, error_message = _store_temp_preview_file()
+    if error_message:
+        return jsonify({"ok": False, "message": error_message}), 400
+
+    assert save_path is not None
+    extraction = extract_document_data(
+        file_path=str(save_path),
+        employee_id=f"preview_{uuid4().hex[:8]}",
+        document_type=document_type,
+        upload_root=current_app.config["UPLOAD_FOLDER"],
+    )
+    payload = {
+        "ok": True,
+        "message": {
+            "ocr_success": "자동추출을 완료했습니다.",
+            "ocr_unavailable": "문서는 읽었지만 OCR 엔진이 준비되지 않았습니다.",
+            "ocr_empty": "자동추출 결과가 적습니다. 값을 확인하세요.",
+            "pdf_stored_only": "PDF는 저장만 완료했습니다. 이미지 파일이 더 정확합니다.",
+            "stored": "자동추출을 완료했습니다.",
+        }.get(extraction.status, "자동추출을 완료했습니다."),
+        "fields": {
+            "name": extraction.name,
+            "english_name": extraction.english_name,
+            "local_name": extraction.local_name,
+            "nationality": extraction.nationality,
+            "birth_date": extraction.birth_date,
+            "gender": extraction.gender,
+            "passport_number": extraction.document_number if document_type == "passport" else "",
+            "id_card_number": extraction.document_number if document_type == "id_card" else "",
+        },
+        "photo_path": extraction.photo_path,
+        "status": extraction.status,
+    }
+    return jsonify(payload)
+
+
 @employees_bp.route("/employees/new", methods=["GET", "POST"])
 def employee_new() -> str:
     businesses = OurBusiness.query.order_by(OurBusiness.id.asc()).all()
@@ -341,80 +399,163 @@ def employee_new() -> str:
     client_options = render_client_company_options(selected_client_company_id, selected_our_business_id)
     work_type_options = render_work_type_options(selected_client_company_id)
 
-    content = f"""
-    <div class="panel">
-        <div class="panel-head"><h2>사원등록</h2><p>기본정보 등록과 문서 OCR 자동입력을 한 번에 처리</p></div>
-        <div class="panel-body">
-            <form method="get" class="panel" style="box-shadow:none; border-radius:14px; margin-bottom:16px;">
-                <div class="panel-body">
-                    <div class="form-grid">
-                        <div><label>사업자</label><select name="our_business_id" onchange="this.form.submit()">{business_options}</select></div>
-                        <div><label>거래처</label><select name="client_company_id" onchange="this.form.submit()">{client_options}</select></div>
-                    </div>
-                </div>
-            </form>
-            <form method="post" enctype="multipart/form-data">
-                <input type="hidden" name="our_business_id" value="{selected_our_business_id}">
-                <input type="hidden" name="client_company_id" value="{selected_client_company_id}">
 
-                <div class="panel" style="box-shadow:none; border-radius:14px; margin-bottom:16px; background:#f8fbff;">
-                    <div class="panel-head"><h2 style="font-size:18px;">문서 업로드 / OCR 자동입력</h2><p>여권 또는 ID 카드 이미지를 올리면 저장 후 자동 인식 결과를 상세화면에 반영합니다.</p></div>
+    content = f"""
+        <div class="panel">
+            <div class="panel-head"><h2>사원등록</h2><p>파일 선택 후 자동추출을 누르면 아래 입력칸과 사진칸에 자동 반영됩니다.</p></div>
+            <div class="panel-body">
+                <form method="get" class="panel" style="box-shadow:none; border-radius:14px; margin-bottom:16px;">
                     <div class="panel-body">
                         <div class="form-grid">
-                            <div>
-                                <label>문서 유형</label>
-                                <select name="document_type">
-                                    <option value="passport">여권</option>
-                                    <option value="id_card">ID 카드</option>
-                                    <option value="other">기타 문서</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label>문서 파일</label>
-                                <input type="file" name="document_file" accept=".png,.jpg,.jpeg,.webp,.pdf">
-                            </div>
-                            <div>
-                                <label>문서명</label>
-                                <input name="file_name" placeholder="예: 여권 앞면">
-                            </div>
-                            <div>
-                                <label>민감 문서 여부</label>
-                                <select name="is_sensitive">
-                                    <option value="Y">민감</option>
-                                    <option value="N">일반</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div class="helper-text" style="margin-top:10px; color:#64748b;">
-                            문서를 같이 올리면 저장 후 OCR 자동 인식과 사진 추출을 시도하고, 인식된 값은 직원 상세와 사진칸에 연결됩니다.
+                            <div><label>사업자</label><select name="our_business_id" onchange="this.form.submit()">{business_options}</select></div>
+                            <div><label>거래처</label><select name="client_company_id" onchange="this.form.submit()">{client_options}</select></div>
                         </div>
                     </div>
-                </div>
+                </form>
+                <form method="post" enctype="multipart/form-data" id="employee-create-form">
+                    <input type="hidden" name="our_business_id" value="{selected_our_business_id}">
+                    <input type="hidden" name="client_company_id" value="{selected_client_company_id}">
 
-                <div class="form-grid">
-                    <div><label>사업자</label><input value="{get_our_business_name(selected_our_business_id)}" disabled></div>
-                    <div><label>거래처</label><input value="{get_client_company_name(selected_client_company_id)}" disabled></div>
-                    <div><label>이름</label><input name="name" required></div>
-                    <div><label>영문이름</label><input name="english_name"></div>
-                    <div><label>현지이름</label><input name="local_name"></div>
-                    <div><label>국적</label><input name="nationality" required></div>
-                    <div><label>여권번호</label><input name="passport_number"></div>
-                    <div><label>ID번호</label><input name="id_card_number"></div>
-                    <div><label>생년월일</label><input type="date" name="birth_date"></div>
-                    <div><label>성별</label><select name="gender"><option value="">선택</option><option value="남">남</option><option value="여">여</option></select></div>
-                    <div><label>연락처</label><input name="phone"></div>
-                    <div><label>입사일</label><input type="date" name="hire_date" value="{today_str()}"></div>
-                    <div><label>급여형태</label><select name="pay_type"><option value="monthly">월급제</option><option value="daily">일급제</option><option value="hourly">시급제</option></select></div>
-                    <div><label>근무타입</label><select name="work_type_id">{work_type_options}</select></div>
-                </div>
-                <div class="actions">
-                    <button class="btn btn-primary" type="submit">저장</button>
-                    <a class="btn btn-white" href="/employees">취소</a>
-                </div>
-            </form>
+                    <div style="display:grid; grid-template-columns:280px 1fr; gap:18px; align-items:start;">
+                        <div class="panel" style="box-shadow:none; border-radius:16px; min-height:100%;">
+                            <div class="panel-head"><h2 style="font-size:20px;">인력 사진</h2><p>자동추출된 사진 미리보기</p></div>
+                            <div class="panel-body">
+                                <div id="employee-photo-preview" class="photo-box">사진이 없습니다</div>
+                                <div id="ocr-status" class="helper-text" style="margin-top:12px; color:#64748b;">문서 파일을 선택하고 자동추출을 누르면 사진과 값이 반영됩니다.</div>
+                            </div>
+                        </div>
+
+                        <div>
+                            <div class="panel" style="box-shadow:none; border-radius:14px; margin-bottom:16px; background:#f8fbff;">
+                                <div class="panel-head"><h2 style="font-size:18px;">문서 업로드 / OCR 자동입력</h2><p>파일 선택 후 자동추출을 누르면 아래 입력칸으로 값이 들어갑니다.</p></div>
+                                <div class="panel-body">
+                                    <div class="form-grid">
+                                        <div>
+                                            <label>문서 유형</label>
+                                            <select name="document_type" id="document_type">
+                                                <option value="passport">여권</option>
+                                                <option value="id_card">ID 카드</option>
+                                                <option value="other">기타 문서</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label>문서 파일</label>
+                                            <input type="file" name="document_file" id="document_file" accept=".png,.jpg,.jpeg,.webp,.pdf">
+                                        </div>
+                                        <div>
+                                            <label>문서명</label>
+                                            <input name="file_name" placeholder="예: 여권 앞면">
+                                        </div>
+                                        <div>
+                                            <label>민감 문서 여부</label>
+                                            <select name="is_sensitive">
+                                                <option value="Y">민감</option>
+                                                <option value="N">일반</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div class="actions" style="margin-top:14px;">
+                                        <button class="btn btn-white" type="button" id="document-apply-button">자동추출</button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="form-grid">
+                                <div><label>사업자</label><input value="{get_our_business_name(selected_our_business_id)}" disabled></div>
+                                <div><label>거래처</label><input value="{get_client_company_name(selected_client_company_id)}" disabled></div>
+                                <div><label>이름</label><input name="name" id="field_name" required></div>
+                                <div><label>영문이름</label><input name="english_name" id="field_english_name"></div>
+                                <div><label>현지이름</label><input name="local_name" id="field_local_name"></div>
+                                <div><label>국적</label><input name="nationality" id="field_nationality" required></div>
+                                <div><label>여권번호</label><input name="passport_number" id="field_passport_number"></div>
+                                <div><label>ID번호</label><input name="id_card_number" id="field_id_card_number"></div>
+                                <div><label>생년월일</label><input type="date" name="birth_date" id="field_birth_date"></div>
+                                <div><label>성별</label><select name="gender" id="field_gender"><option value="">선택</option><option value="남">남</option><option value="여">여</option></select></div>
+                                <div><label>연락처</label><input name="phone"></div>
+                                <div><label>입사일</label><input type="date" name="hire_date" value="{today_str()}"></div>
+                                <div><label>급여형태</label><select name="pay_type"><option value="monthly">월급제</option><option value="daily">일급제</option><option value="hourly">시급제</option></select></div>
+                                <div><label>근무타입</label><select name="work_type_id">{work_type_options}</select></div>
+                            </div>
+                            <div class="actions">
+                                <button class="btn btn-primary" type="submit">저장</button>
+                                <a class="btn btn-white" href="/employees">취소</a>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
         </div>
-    </div>
-    """
+        <script>
+        (function() {{
+            const applyButton = document.getElementById("document-apply-button");
+            const fileInput = document.getElementById("document_file");
+            const documentType = document.getElementById("document_type");
+            const statusBox = document.getElementById("ocr-status");
+            const photoBox = document.getElementById("employee-photo-preview");
+
+            function setStatus(message) {{
+                statusBox.textContent = message;
+            }}
+
+            function setPreview(photoPath) {{
+                if (!photoPath) {{
+                    photoBox.innerHTML = "사진이 없습니다";
+                    return;
+                }}
+                photoBox.innerHTML = `<img src="${{photoPath}}" alt="자동추출 사진" style="width:100%; max-width:220px; border-radius:18px; border:1px solid #dbe4ef; object-fit:cover;">`;
+            }}
+
+            function applyFields(fields) {{
+                const pairs = {{
+                    field_name: fields.name || "",
+                    field_english_name: fields.english_name || "",
+                    field_local_name: fields.local_name || "",
+                    field_nationality: fields.nationality || "",
+                    field_passport_number: fields.passport_number || "",
+                    field_id_card_number: fields.id_card_number || "",
+                    field_birth_date: fields.birth_date || "",
+                }};
+                Object.entries(pairs).forEach(([id, value]) => {{
+                    const el = document.getElementById(id);
+                    if (!el) return;
+                    if (!el.value || value) el.value = value;
+                }});
+                const genderEl = document.getElementById("field_gender");
+                if (genderEl && fields.gender) {{
+                    genderEl.value = fields.gender;
+                }}
+            }}
+
+            applyButton.addEventListener("click", async function() {{
+                if (!fileInput.files.length) {{
+                    setStatus("먼저 문서 파일을 선택하세요.");
+                    return;
+                }}
+                setStatus("자동추출 중입니다...");
+                const formData = new FormData();
+                formData.append("document_file", fileInput.files[0]);
+                formData.append("document_type", documentType.value);
+
+                try {{
+                    const response = await fetch("/employees/document-preview", {{
+                        method: "POST",
+                        body: formData
+                    }});
+                    const data = await response.json();
+                    if (!response.ok || !data.ok) {{
+                        setStatus(data.message || "자동추출에 실패했습니다.");
+                        return;
+                    }}
+                    applyFields(data.fields || {{}});
+                    setPreview(data.photo_path || "");
+                    setStatus(data.message || "자동추출을 완료했습니다.");
+                }} catch (error) {{
+                    setStatus("자동추출 중 오류가 발생했습니다.");
+                }}
+            }});
+        }})();
+        </script>
+        """
     return render_page("사원등록", "employees", content, _employee_quick("list"))
 
 

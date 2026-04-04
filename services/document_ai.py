@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import dataclass
+from uuid import uuid4
 from pathlib import Path
 from typing import Any
 
@@ -146,7 +147,7 @@ def _extract_generic(text: str, document_type: str) -> dict[str, str]:
     return data
 
 
-def _save_cropped_photo(image_path: str, employee_id: int, document_type: str, upload_root: str) -> str:
+def _save_cropped_photo(image_path: str, employee_id: int | str, document_type: str, upload_root: str) -> str:
     try:
         image = Image.open(image_path).convert("RGB")
     except Exception:
@@ -163,12 +164,12 @@ def _save_cropped_photo(image_path: str, employee_id: int, document_type: str, u
     cropped = image.crop(crop)
     profile_dir = Path(upload_root) / "profiles"
     profile_dir.mkdir(parents=True, exist_ok=True)
-    output_path = profile_dir / f"employee_{employee_id}_{document_type}_photo.jpg"
+    output_path = profile_dir / f"employee_{employee_id}_{document_type}_{uuid4().hex[:10]}_photo.jpg"
     cropped.save(output_path, format="JPEG", quality=92)
     return f"/uploads/profiles/{output_path.name}"
 
 
-def extract_document_data(*, file_path: str, employee_id: int, document_type: str, upload_root: str) -> ExtractionResult:
+def extract_document_data(*, file_path: str, employee_id: int | str, document_type: str, upload_root: str) -> ExtractionResult:
     suffix = Path(file_path).suffix.lower()
     text = ""
     status = "stored"
