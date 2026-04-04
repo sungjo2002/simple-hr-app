@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 from uuid import uuid4
 
-from flask import Blueprint, current_app, jsonify, redirect, render_template_string, request, url_for
+from flask import Blueprint, current_app, redirect, render_template_string, request, url_for
 from werkzeug.utils import secure_filename
 
 from models import AttendanceRecord, ClientCompany, Employee, EmployeeDocument, OurBusiness, db
@@ -142,24 +142,6 @@ def _store_uploaded_file(employee_id: int):
     return save_path, ""
 
 
-
-def _store_temp_preview_file():
-    file = request.files.get("document_file")
-    if not file or not file.filename:
-        return None, "파일을 선택하세요."
-    extension = Path(file.filename).suffix.lower()
-    if extension not in ALLOWED_UPLOAD_EXTENSIONS:
-        return None, "PNG, JPG, WEBP, PDF만 업로드할 수 있습니다."
-
-    safe_name = secure_filename(file.filename) or f"preview{extension}"
-    save_dir = Path(current_app.config["UPLOAD_FOLDER"]) / "tmp_document_preview"
-    save_dir.mkdir(parents=True, exist_ok=True)
-    save_name = f"{uuid4().hex}_{safe_name}"
-    save_path = save_dir / save_name
-    file.save(save_path)
-    return save_path, ""
-
-
 def _apply_extracted_data_to_employee(
     employee: Employee,
     document_type: str,
@@ -192,24 +174,28 @@ def _apply_extracted_data_to_employee(
 
 
 
-def _save_employee_document(employee: Employee, *, document_type: str) -> str:
-    save_path, error_message = _store_uploaded_file(employee.id)
-    if error_message:
-        return error_message
 
-    assert save_path is not None
+
+def _save_document_record(
+    employee: Employee,
+    *,
+    saved_path: Path,
+    document_type: str,
+    file_name: str,
+    file_mime_type: str,
+    is_sensitive: bool,
+) -> str:
     extraction = extract_document_data(
-        file_path=str(save_path),
+        file_path=str(saved_path),
         employee_id=employee.id,
         document_type=document_type,
         upload_root=current_app.config["UPLOAD_FOLDER"],
     )
-    relative_file_path = f"/uploads/employee_documents/{employee.id}/{save_path.name}"
-    document_file = request.files.get("document_file")
+    relative_file_path = f"/uploads/employee_documents/{employee.id}/{saved_path.name}"
     document = EmployeeDocument(
         employee_id=employee.id,
         document_type=document_type,
-        file_name=request.form.get("file_name", "").strip() or save_path.name,
+        file_name=file_name.strip() or saved_path.name,
         file_path=relative_file_path,
         preview_photo_path=extraction.photo_path,
         extracted_text=extraction.text,
@@ -220,8 +206,8 @@ def _save_employee_document(employee: Employee, *, document_type: str) -> str:
         extracted_document_number=extraction.document_number,
         extracted_birth_date=extraction.birth_date,
         extracted_gender=extraction.gender,
-        file_mime_type=(document_file.mimetype if document_file else "") or "application/octet-stream",
-        is_sensitive=request.form.get("is_sensitive", "Y") == "Y",
+        file_mime_type=file_mime_type or "application/octet-stream",
+        is_sensitive=is_sensitive,
         uploaded_by="super_admin",
         created_at=today_str(),
     )
@@ -241,6 +227,191 @@ def _save_employee_document(employee: Employee, *, document_type: str) -> str:
         "stored": "문서를 저장했습니다.",
     }.get(extraction.status, "문서를 저장했습니다.")
 
+
+def _finalize_temp_document(
+    employee: Employee,
+    *,
+    temp_relative_path: str,
+    document_type: str,
+    file_name: str,
+    file_mime_type: str,
+    is_sensitive: bool,
+) -> str:
+    if not temp_relative_path.startswith("/uploads/"):
+        return ""
+    source_path = Path(current_app.root_path) / temp_relative_path.lstrip("/")
+    if not source_path.exists():
+        return ""
+    employee_dir = Path(current_app.config["UPLOAD_FOLDER"]) / "employee_documents" / str(employee.id)
+    employee_dir.mkdir(parents=True, exist_ok=True)
+    target_path = employee_dir / source_path.name
+    if source_path.resolve() != target_path.resolve():
+        target_path.write_bytes(source_path.read_bytes())
+    return _save_document_record(
+        employee,
+        saved_path=target_path,
+        document_type=document_type,
+        file_name=file_name,
+        file_mime_type=file_mime_type,
+        is_sensitive=is_sensitive,
+    )
+
+
+def _save_temp_upload(document_file) -> tuple[str, str]:
+    suffix = Path(document_file.filename).suffix.lower()
+    if suffix not in ALLOWED_UPLOAD_EXTENSIONS:
+        return "", "PNG, JPG, WEBP, PDF 파일만 업로드할 수 있습니다."
+    temp_dir = Path(current_app.config["UPLOAD_FOLDER"]) / "tmp"
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    filename = f"tmp_{uuid4().hex}{suffix}"
+    saved_path = temp_dir / secure_filename(filename)
+    document_file.save(saved_path)
+    return f"/uploads/tmp/{saved_path.name}", ""
+
+
+def _render_employee_new_page(
+    *,
+    selected_our_business_id: int,
+    selected_client_company_id: int,
+    form_values: dict[str, str],
+    preview_path: str = "",
+    extraction_message: str = "",
+    extraction_status: str = "",
+) -> str:
+    business_options = render_our_business_options(selected_our_business_id)
+    client_options = render_client_company_options(selected_client_company_id, selected_our_business_id)
+    work_type_options = render_work_type_options(selected_client_company_id, int(form_values.get("work_type_id") or 0))
+    extraction_tone = "#eff6ff" if extraction_status == "success" else "#fff7ed" if extraction_status == "warn" else "#f8fafc"
+    extraction_text = extraction_message or "파일 선택 후 자동추출을 누르면 아래 입력칸과 사진칸이 자동으로 채워집니다."
+    preview_html = ""
+    if preview_path:
+        preview_html = f'<img src="{preview_path}" alt="추출 사진 미리보기" style="width:100%; height:100%; object-fit:cover; display:block;">'
+    else:
+        preview_html = '<div style="display:flex; align-items:center; justify-content:center; width:100%; height:100%; color:#64748b; font-weight:700;">사진 미리보기</div>'
+    fill_notice = ""
+    if extraction_status:
+        fill_notice = f'<div style="margin-bottom:14px; padding:12px 14px; border:1px solid #dbe4ef; border-radius:12px; background:{extraction_tone}; color:#0f172a;">{extraction_text}</div>'
+
+    def v(key: str) -> str:
+        return (form_values.get(key) or "").replace('"', '&quot;')
+
+    content = f"""
+    <div class="panel">
+        <div class="panel-head"><h2>사원등록</h2><p>파일 선택 후 자동추출을 누르면 아래 입력값과 사진칸에 자동 반영됩니다.</p></div>
+        <div class="panel-body">
+            <form method="get" class="panel" style="box-shadow:none; border-radius:14px; margin-bottom:16px;">
+                <div class="panel-body">
+                    <div class="form-grid">
+                        <div><label>사업자</label><select name="our_business_id" onchange="this.form.submit()">{business_options}</select></div>
+                        <div><label>거래처</label><select name="client_company_id" onchange="this.form.submit()">{client_options}</select></div>
+                    </div>
+                </div>
+            </form>
+            <form method="post" enctype="multipart/form-data">
+                <input type="hidden" name="our_business_id" value="{selected_our_business_id}">
+                <input type="hidden" name="client_company_id" value="{selected_client_company_id}">
+                <input type="hidden" name="temp_file_path" value="{v('temp_file_path')}">
+                <input type="hidden" name="existing_document_file_name" value="{v('existing_document_file_name')}">
+                <input type="hidden" name="existing_document_mime_type" value="{v('existing_document_mime_type')}">
+
+                <div style="display:grid; grid-template-columns:260px minmax(0,1fr); gap:18px; align-items:start; margin-bottom:18px;">
+                    <div class="panel" style="box-shadow:none; border-radius:16px; overflow:hidden;">
+                        <div class="panel-head"><h2 style="font-size:18px;">사진 미리보기</h2><p>자동 추출된 사진</p></div>
+                        <div class="panel-body">
+                            <div style="width:100%; aspect-ratio:3 / 4; border:1px dashed #c7d3e3; border-radius:18px; overflow:hidden; background:#f8fafc;">
+                                {preview_html}
+                            </div>
+                            <div class="helper-text" style="margin-top:10px; color:#64748b;">사진은 박스 안에만 표시되며 저장 후 상세 사진칸에 반영됩니다.</div>
+                        </div>
+                    </div>
+
+                    <div class="panel" style="box-shadow:none; border-radius:16px; background:#f8fbff;">
+                        <div class="panel-head"><h2 style="font-size:18px;">문서 업로드 / OCR 자동입력</h2><p>문서 업로드 후 자동추출을 누르면 아래 입력칸이 채워집니다.</p></div>
+                        <div class="panel-body">
+                            {fill_notice}
+                            <div class="form-grid">
+                                <div>
+                                    <label>문서 유형</label>
+                                    <select name="document_type">
+                                        <option value="passport" {"selected" if v("document_type") == "passport" else ""}>여권</option>
+                                        <option value="id_card" {"selected" if v("document_type") == "id_card" else ""}>ID 카드</option>
+                                        <option value="other" {"selected" if v("document_type") == "other" else ""}>기타 문서</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label>문서 파일</label>
+                                    <input type="file" name="document_file" accept=".png,.jpg,.jpeg,.webp,.pdf">
+                                </div>
+                                <div>
+                                    <label>문서명</label>
+                                    <input name="file_name" value="{v('file_name')}" placeholder="예: 여권 앞면">
+                                </div>
+                                <div>
+                                    <label>민감 문서 여부</label>
+                                    <select name="is_sensitive">
+                                        <option value="Y" {"selected" if v("is_sensitive") != "N" else ""}>민감</option>
+                                        <option value="N" {"selected" if v("is_sensitive") == "N" else ""}>일반</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="actions" style="margin-top:14px;">
+                                <button class="btn btn-white" type="submit" name="action" value="autoextract">자동추출</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-grid">
+                    <div><label>사업자</label><input value="{get_our_business_name(selected_our_business_id)}" disabled></div>
+                    <div><label>거래처</label><input value="{get_client_company_name(selected_client_company_id)}" disabled></div>
+                    <div><label>이름</label><input name="name" value="{v('name')}" required></div>
+                    <div><label>영문이름</label><input name="english_name" value="{v('english_name')}"></div>
+                    <div><label>현지이름</label><input name="local_name" value="{v('local_name')}"></div>
+                    <div><label>국적</label><input name="nationality" value="{v('nationality')}" required></div>
+                    <div><label>여권번호</label><input name="passport_number" value="{v('passport_number')}"></div>
+                    <div><label>ID번호</label><input name="id_card_number" value="{v('id_card_number')}"></div>
+                    <div><label>생년월일</label><input type="date" name="birth_date" value="{v('birth_date')}"></div>
+                    <div><label>성별</label>
+                        <select name="gender">
+                            <option value="">선택</option>
+                            <option value="남" {"selected" if v("gender") == "남" else ""}>남</option>
+                            <option value="여" {"selected" if v("gender") == "여" else ""}>여</option>
+                        </select>
+                    </div>
+                    <div><label>연락처</label><input name="phone" value="{v('phone')}"></div>
+                    <div><label>입사일</label><input type="date" name="hire_date" value="{v('hire_date') or today_str()}"></div>
+                    <div><label>급여형태</label>
+                        <select name="pay_type">
+                            <option value="monthly" {"selected" if v("pay_type") in {"", "monthly"} else ""}>월급제</option>
+                            <option value="daily" {"selected" if v("pay_type") == "daily" else ""}>일급제</option>
+                            <option value="hourly" {"selected" if v("pay_type") == "hourly" else ""}>시급제</option>
+                        </select>
+                    </div>
+                    <div><label>근무타입</label><select name="work_type_id">{work_type_options}</select></div>
+                </div>
+                <div class="actions">
+                    <button class="btn btn-primary" type="submit" name="action" value="save">저장</button>
+                    <a class="btn btn-white" href="/employees">취소</a>
+                </div>
+            </form>
+        </div>
+    </div>
+    """
+    return render_page("사원등록", "employees", content, _employee_quick("list"))
+def _save_employee_document(employee: Employee, *, document_type: str) -> str:
+    save_path, error_message = _store_uploaded_file(employee.id)
+    if error_message:
+        return error_message
+    assert save_path is not None
+    document_file = request.files.get("document_file")
+    return _save_document_record(
+        employee,
+        saved_path=save_path,
+        document_type=document_type,
+        file_name=request.form.get("file_name", "").strip() or save_path.name,
+        file_mime_type=(document_file.mimetype if document_file else "") or "application/octet-stream",
+        is_sensitive=request.form.get("is_sensitive", "Y") == "Y",
+    )
 
 def _profile_photo(employee: Employee) -> str:
     if employee.profile_photo_path:
@@ -307,46 +478,6 @@ def retired_employees_page() -> str:
     return render_page("퇴사자관리", "employees", content, _employee_quick("retired"))
 
 
-
-@employees_bp.route("/employees/document-preview", methods=["POST"])
-def employee_document_preview():
-    document_type = request.form.get("document_type", "other")
-    save_path, error_message = _store_temp_preview_file()
-    if error_message:
-        return jsonify({"ok": False, "message": error_message}), 400
-
-    assert save_path is not None
-    extraction = extract_document_data(
-        file_path=str(save_path),
-        employee_id=f"preview_{uuid4().hex[:8]}",
-        document_type=document_type,
-        upload_root=current_app.config["UPLOAD_FOLDER"],
-    )
-    payload = {
-        "ok": True,
-        "message": {
-            "ocr_success": "자동추출을 완료했습니다.",
-            "ocr_unavailable": "문서는 읽었지만 OCR 엔진이 준비되지 않았습니다.",
-            "ocr_empty": "자동추출 결과가 적습니다. 값을 확인하세요.",
-            "pdf_stored_only": "PDF는 저장만 완료했습니다. 이미지 파일이 더 정확합니다.",
-            "stored": "자동추출을 완료했습니다.",
-        }.get(extraction.status, "자동추출을 완료했습니다."),
-        "fields": {
-            "name": extraction.name,
-            "english_name": extraction.english_name,
-            "local_name": extraction.local_name,
-            "nationality": extraction.nationality,
-            "birth_date": extraction.birth_date,
-            "gender": extraction.gender,
-            "passport_number": extraction.document_number if document_type == "passport" else "",
-            "id_card_number": extraction.document_number if document_type == "id_card" else "",
-        },
-        "photo_path": extraction.photo_path,
-        "status": extraction.status,
-    }
-    return jsonify(payload)
-
-
 @employees_bp.route("/employees/new", methods=["GET", "POST"])
 def employee_new() -> str:
     businesses = OurBusiness.query.order_by(OurBusiness.id.asc()).all()
@@ -363,7 +494,91 @@ def employee_new() -> str:
     selected_client_raw = request.values.get("client_company_id", str(clients[0].id))
     selected_client_company_id = int(selected_client_raw) if selected_client_raw.isdigit() else clients[0].id
 
+    form_values = {
+        "document_type": request.values.get("document_type", "passport"),
+        "file_name": request.values.get("file_name", ""),
+        "is_sensitive": request.values.get("is_sensitive", "Y"),
+        "name": request.values.get("name", ""),
+        "english_name": request.values.get("english_name", ""),
+        "local_name": request.values.get("local_name", ""),
+        "nationality": request.values.get("nationality", ""),
+        "passport_number": request.values.get("passport_number", ""),
+        "id_card_number": request.values.get("id_card_number", ""),
+        "birth_date": request.values.get("birth_date", ""),
+        "gender": request.values.get("gender", ""),
+        "phone": request.values.get("phone", ""),
+        "hire_date": request.values.get("hire_date", today_str()),
+        "pay_type": request.values.get("pay_type", "monthly"),
+        "work_type_id": request.values.get("work_type_id", ""),
+        "temp_file_path": request.values.get("temp_file_path", ""),
+        "existing_document_file_name": request.values.get("existing_document_file_name", ""),
+        "existing_document_mime_type": request.values.get("existing_document_mime_type", ""),
+    }
+    if not form_values["work_type_id"]:
+        form_values["work_type_id"] = str(getattr(clients[0], "default_work_type_id", "") or "")
+
+    preview_path = ""
+    extraction_message = ""
+    extraction_status = ""
+
     if request.method == "POST":
+        action = request.form.get("action", "save")
+        if action == "autoextract":
+            document_file = request.files.get("document_file")
+            if not document_file or not document_file.filename:
+                extraction_message = "자동추출할 문서 파일을 먼저 선택하세요."
+                extraction_status = "warn"
+            else:
+                temp_relative_path, error_message = _save_temp_upload(document_file)
+                if error_message:
+                    extraction_message = error_message
+                    extraction_status = "warn"
+                else:
+                    source_path = Path(current_app.root_path) / temp_relative_path.lstrip("/")
+                    extraction = extract_document_data(
+                        file_path=str(source_path),
+                        employee_id=0,
+                        document_type=form_values["document_type"],
+                        upload_root=current_app.config["UPLOAD_FOLDER"],
+                    )
+                    preview_path = extraction.photo_path or temp_relative_path
+                    form_values["temp_file_path"] = temp_relative_path
+                    form_values["existing_document_file_name"] = document_file.filename
+                    form_values["existing_document_mime_type"] = document_file.mimetype or "application/octet-stream"
+                    if extraction.name and not form_values["name"]:
+                        form_values["name"] = extraction.name
+                    if extraction.english_name:
+                        form_values["english_name"] = extraction.english_name
+                    if extraction.local_name:
+                        form_values["local_name"] = extraction.local_name
+                    if extraction.nationality:
+                        form_values["nationality"] = extraction.nationality
+                    if form_values["document_type"] == "passport":
+                        if extraction.document_number:
+                            form_values["passport_number"] = extraction.document_number
+                    elif extraction.document_number:
+                        form_values["id_card_number"] = extraction.document_number
+                    if extraction.birth_date:
+                        form_values["birth_date"] = extraction.birth_date
+                    if extraction.gender:
+                        form_values["gender"] = extraction.gender
+                    extraction_message = {
+                        "ocr_success": "자동추출이 완료됐습니다. 아래 입력칸과 사진칸을 확인한 뒤 저장하세요.",
+                        "ocr_empty": "이미지는 읽었지만 값이 적습니다. 아래 값을 직접 보완하세요.",
+                        "ocr_unavailable": "OCR 엔진이 없어 자동추출이 제한됩니다. 사진만 미리보기에 표시했습니다.",
+                        "pdf_stored_only": "PDF는 저장용에 적합합니다. 이미지 업로드가 더 잘 동작합니다.",
+                        "stored": "문서를 읽지 못했지만 업로드는 완료됐습니다.",
+                    }.get(extraction.status, "자동추출을 완료했습니다.")
+                    extraction_status = "success" if extraction.status == "ocr_success" else "warn"
+            return _render_employee_new_page(
+                selected_our_business_id=selected_our_business_id,
+                selected_client_company_id=selected_client_company_id,
+                form_values=form_values,
+                preview_path=preview_path,
+                extraction_message=extraction_message,
+                extraction_status=extraction_status,
+            )
+
         item = Employee(
             our_business_id=int(request.form["our_business_id"]),
             current_client_company_id=int(request.form["client_company_id"]),
@@ -386,177 +601,31 @@ def employee_new() -> str:
         db.session.add(item)
         db.session.commit()
 
+        upload_message = ""
         if request.files.get("document_file") and request.files["document_file"].filename:
             upload_message = _save_employee_document(
                 item,
                 document_type=request.form.get("document_type", "other"),
             )
-            return redirect(url_for("employees.employee_detail", employee_id=item.id, upload_message=upload_message))
+        elif request.form.get("temp_file_path"):
+            upload_message = _finalize_temp_document(
+                item,
+                temp_relative_path=request.form.get("temp_file_path", ""),
+                document_type=request.form.get("document_type", "other"),
+                file_name=request.form.get("existing_document_file_name", "").strip() or request.form.get("file_name", "").strip(),
+                file_mime_type=request.form.get("existing_document_mime_type", ""),
+                is_sensitive=request.form.get("is_sensitive", "Y") == "Y",
+            )
 
+        if upload_message:
+            return redirect(url_for("employees.employee_detail", employee_id=item.id, upload_message=upload_message))
         return redirect(url_for("employees.employees_page"))
 
-    business_options = render_our_business_options(selected_our_business_id)
-    client_options = render_client_company_options(selected_client_company_id, selected_our_business_id)
-    work_type_options = render_work_type_options(selected_client_company_id)
-
-
-    content = f"""
-        <div class="panel">
-            <div class="panel-head"><h2>사원등록</h2><p>파일 선택 후 자동추출을 누르면 아래 입력칸과 사진칸에 자동 반영됩니다.</p></div>
-            <div class="panel-body">
-                <form method="get" class="panel" style="box-shadow:none; border-radius:14px; margin-bottom:16px;">
-                    <div class="panel-body">
-                        <div class="form-grid">
-                            <div><label>사업자</label><select name="our_business_id" onchange="this.form.submit()">{business_options}</select></div>
-                            <div><label>거래처</label><select name="client_company_id" onchange="this.form.submit()">{client_options}</select></div>
-                        </div>
-                    </div>
-                </form>
-                <form method="post" enctype="multipart/form-data" id="employee-create-form">
-                    <input type="hidden" name="our_business_id" value="{selected_our_business_id}">
-                    <input type="hidden" name="client_company_id" value="{selected_client_company_id}">
-
-                    <div style="display:grid; grid-template-columns:280px 1fr; gap:18px; align-items:start;">
-                        <div class="panel" style="box-shadow:none; border-radius:16px; min-height:100%;">
-                            <div class="panel-head"><h2 style="font-size:20px;">인력 사진</h2><p>자동추출된 사진 미리보기</p></div>
-                            <div class="panel-body">
-                                <div id="employee-photo-preview" class="photo-box">사진이 없습니다</div>
-                                <div id="ocr-status" class="helper-text" style="margin-top:12px; color:#64748b;">문서 파일을 선택하고 자동추출을 누르면 사진과 값이 반영됩니다.</div>
-                            </div>
-                        </div>
-
-                        <div>
-                            <div class="panel" style="box-shadow:none; border-radius:14px; margin-bottom:16px; background:#f8fbff;">
-                                <div class="panel-head"><h2 style="font-size:18px;">문서 업로드 / OCR 자동입력</h2><p>파일 선택 후 자동추출을 누르면 아래 입력칸으로 값이 들어갑니다.</p></div>
-                                <div class="panel-body">
-                                    <div class="form-grid">
-                                        <div>
-                                            <label>문서 유형</label>
-                                            <select name="document_type" id="document_type">
-                                                <option value="passport">여권</option>
-                                                <option value="id_card">ID 카드</option>
-                                                <option value="other">기타 문서</option>
-                                            </select>
-                                        </div>
-                                        <div>
-                                            <label>문서 파일</label>
-                                            <input type="file" name="document_file" id="document_file" accept=".png,.jpg,.jpeg,.webp,.pdf">
-                                        </div>
-                                        <div>
-                                            <label>문서명</label>
-                                            <input name="file_name" placeholder="예: 여권 앞면">
-                                        </div>
-                                        <div>
-                                            <label>민감 문서 여부</label>
-                                            <select name="is_sensitive">
-                                                <option value="Y">민감</option>
-                                                <option value="N">일반</option>
-                                            </select>
-                                        </div>
-                                    </div>
-                                    <div class="actions" style="margin-top:14px;">
-                                        <button class="btn btn-white" type="button" id="document-apply-button">자동추출</button>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div class="form-grid">
-                                <div><label>사업자</label><input value="{get_our_business_name(selected_our_business_id)}" disabled></div>
-                                <div><label>거래처</label><input value="{get_client_company_name(selected_client_company_id)}" disabled></div>
-                                <div><label>이름</label><input name="name" id="field_name" required></div>
-                                <div><label>영문이름</label><input name="english_name" id="field_english_name"></div>
-                                <div><label>현지이름</label><input name="local_name" id="field_local_name"></div>
-                                <div><label>국적</label><input name="nationality" id="field_nationality" required></div>
-                                <div><label>여권번호</label><input name="passport_number" id="field_passport_number"></div>
-                                <div><label>ID번호</label><input name="id_card_number" id="field_id_card_number"></div>
-                                <div><label>생년월일</label><input type="date" name="birth_date" id="field_birth_date"></div>
-                                <div><label>성별</label><select name="gender" id="field_gender"><option value="">선택</option><option value="남">남</option><option value="여">여</option></select></div>
-                                <div><label>연락처</label><input name="phone"></div>
-                                <div><label>입사일</label><input type="date" name="hire_date" value="{today_str()}"></div>
-                                <div><label>급여형태</label><select name="pay_type"><option value="monthly">월급제</option><option value="daily">일급제</option><option value="hourly">시급제</option></select></div>
-                                <div><label>근무타입</label><select name="work_type_id">{work_type_options}</select></div>
-                            </div>
-                            <div class="actions">
-                                <button class="btn btn-primary" type="submit">저장</button>
-                                <a class="btn btn-white" href="/employees">취소</a>
-                            </div>
-                        </div>
-                    </div>
-                </form>
-            </div>
-        </div>
-        <script>
-        (function() {{
-            const applyButton = document.getElementById("document-apply-button");
-            const fileInput = document.getElementById("document_file");
-            const documentType = document.getElementById("document_type");
-            const statusBox = document.getElementById("ocr-status");
-            const photoBox = document.getElementById("employee-photo-preview");
-
-            function setStatus(message) {{
-                statusBox.textContent = message;
-            }}
-
-            function setPreview(photoPath) {{
-                if (!photoPath) {{
-                    photoBox.innerHTML = "사진이 없습니다";
-                    return;
-                }}
-                photoBox.innerHTML = `<img src="${{photoPath}}" alt="자동추출 사진" style="width:100%; max-width:220px; border-radius:18px; border:1px solid #dbe4ef; object-fit:cover;">`;
-            }}
-
-            function applyFields(fields) {{
-                const pairs = {{
-                    field_name: fields.name || "",
-                    field_english_name: fields.english_name || "",
-                    field_local_name: fields.local_name || "",
-                    field_nationality: fields.nationality || "",
-                    field_passport_number: fields.passport_number || "",
-                    field_id_card_number: fields.id_card_number || "",
-                    field_birth_date: fields.birth_date || "",
-                }};
-                Object.entries(pairs).forEach(([id, value]) => {{
-                    const el = document.getElementById(id);
-                    if (!el) return;
-                    if (!el.value || value) el.value = value;
-                }});
-                const genderEl = document.getElementById("field_gender");
-                if (genderEl && fields.gender) {{
-                    genderEl.value = fields.gender;
-                }}
-            }}
-
-            applyButton.addEventListener("click", async function() {{
-                if (!fileInput.files.length) {{
-                    setStatus("먼저 문서 파일을 선택하세요.");
-                    return;
-                }}
-                setStatus("자동추출 중입니다...");
-                const formData = new FormData();
-                formData.append("document_file", fileInput.files[0]);
-                formData.append("document_type", documentType.value);
-
-                try {{
-                    const response = await fetch("/employees/document-preview", {{
-                        method: "POST",
-                        body: formData
-                    }});
-                    const data = await response.json();
-                    if (!response.ok || !data.ok) {{
-                        setStatus(data.message || "자동추출에 실패했습니다.");
-                        return;
-                    }}
-                    applyFields(data.fields || {{}});
-                    setPreview(data.photo_path || "");
-                    setStatus(data.message || "자동추출을 완료했습니다.");
-                }} catch (error) {{
-                    setStatus("자동추출 중 오류가 발생했습니다.");
-                }}
-            }});
-        }})();
-        </script>
-        """
-    return render_page("사원등록", "employees", content, _employee_quick("list"))
+    return _render_employee_new_page(
+        selected_our_business_id=selected_our_business_id,
+        selected_client_company_id=selected_client_company_id,
+        form_values=form_values,
+    )
 
 
 @employees_bp.route("/employees/<int:employee_id>", methods=["GET", "POST"])

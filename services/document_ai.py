@@ -4,11 +4,10 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import dataclass
-from uuid import uuid4
 from pathlib import Path
 from typing import Any
 
-from PIL import Image
+from PIL import Image, ImageOps
 
 try:
     import pytesseract
@@ -72,7 +71,7 @@ def _ocr_image(path: str) -> str:
     if pytesseract is None:
         return ""
     try:
-        image = Image.open(path)
+        image = ImageOps.exif_transpose(Image.open(path))
         text = pytesseract.image_to_string(image, lang="eng+kor")
         return _clean_text(text)
     except Exception:
@@ -147,29 +146,30 @@ def _extract_generic(text: str, document_type: str) -> dict[str, str]:
     return data
 
 
-def _save_cropped_photo(image_path: str, employee_id: int | str, document_type: str, upload_root: str) -> str:
+def _save_cropped_photo(image_path: str, employee_id: int, document_type: str, upload_root: str) -> str:
     try:
-        image = Image.open(image_path).convert("RGB")
+        image = ImageOps.exif_transpose(Image.open(image_path)).convert("RGB")
     except Exception:
         return ""
     width, height = image.size
     if width < 200 or height < 200:
         return ""
     if document_type == "passport":
-        crop = (int(width * 0.60), int(height * 0.18), int(width * 0.94), int(height * 0.72))
+        crop = (int(width * 0.06), int(height * 0.42), int(width * 0.34), int(height * 0.90))
     elif document_type == "id_card":
-        crop = (int(width * 0.02), int(height * 0.12), int(width * 0.38), int(height * 0.88))
+        crop = (int(width * 0.60), int(height * 0.08), int(width * 0.96), int(height * 0.88))
     else:
-        crop = (int(width * 0.60), int(height * 0.10), int(width * 0.95), int(height * 0.90))
+        crop = (int(width * 0.10), int(height * 0.10), int(width * 0.40), int(height * 0.90))
     cropped = image.crop(crop)
+    cropped = ImageOps.fit(cropped, (420, 560), method=Image.Resampling.LANCZOS)
     profile_dir = Path(upload_root) / "profiles"
     profile_dir.mkdir(parents=True, exist_ok=True)
-    output_path = profile_dir / f"employee_{employee_id}_{document_type}_{uuid4().hex[:10]}_photo.jpg"
+    output_path = profile_dir / f"employee_{employee_id}_{document_type}_photo.jpg"
     cropped.save(output_path, format="JPEG", quality=92)
     return f"/uploads/profiles/{output_path.name}"
 
 
-def extract_document_data(*, file_path: str, employee_id: int | str, document_type: str, upload_root: str) -> ExtractionResult:
+def extract_document_data(*, file_path: str, employee_id: int, document_type: str, upload_root: str) -> ExtractionResult:
     suffix = Path(file_path).suffix.lower()
     text = ""
     status = "stored"
