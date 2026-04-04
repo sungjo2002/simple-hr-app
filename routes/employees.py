@@ -26,21 +26,48 @@ from utils import (
 
 employees_bp = Blueprint("employees", __name__)
 
+RETIREMENT_REASON_OPTIONS = [
+    "계약만료",
+    "자진퇴사",
+    "사업장 종료",
+    "건강 문제",
+    "비자 이슈",
+    "귀국 예정",
+    "기타",
+]
+
+
+def _employee_status_label(employee: Employee) -> str:
+    return "재직" if employee.status == "active" else "퇴사"
+
+
+def _employee_status_badge(employee: Employee) -> str:
+    return status_badge(_employee_status_label(employee))
+
+
+def _retirement_ready_label(employee: Employee) -> str:
+    return "재연락 대상" if (employee.recontact_target or "N") == "Y" else "재연락 제외"
+
 
 def _employee_action_forms(employee: Employee, compact: bool = False) -> str:
     gap = "6px" if compact else "8px"
-    employee_active = employee.status == "active"
-    return f"""
+    if employee.status == "active":
+        retire_or_rehire = f'<a class="btn btn-white" href="/employees/{employee.id}/retire">퇴사처리</a>'
+    else:
+        retire_or_rehire = f'''
+        <form method="post" action="/employees/{employee.id}/reactivate" onsubmit="return confirm('재입사 처리로 전환할까요?');" style="display:inline;">
+            <button class="btn btn-primary" type="submit">재입사 처리</button>
+        </form>
+        '''
+    return f'''
     <div class="actions" style="gap:{gap}; flex-wrap:wrap;">
         <a class="btn btn-white" href="/employees/{employee.id}/edit">수정</a>
-        <form method="post" action="/employees/{employee.id}/toggle-active" onsubmit="return confirm('직원 상태를 전환할까요?');" style="display:inline;">
-            <button class="btn btn-white" type="submit">{'비활성' if employee_active else '활성'}</button>
-        </form>
+        {retire_or_rehire}
         <form method="post" action="/employees/{employee.id}/delete" onsubmit="return confirm('직원을 삭제할까요? 근태/문서 기록이 있으면 삭제할 수 없습니다.');" style="display:inline;">
             <button class="btn btn-danger" type="submit">삭제</button>
         </form>
     </div>
-    """
+    '''
 
 
 @employees_bp.route("/employees")
@@ -66,7 +93,9 @@ def employees_page() -> str:
             or q_lower in get_work_type_name(employee.work_type_id).lower()
             or q_lower in PAY_TYPE_LABELS.get(employee.pay_type, "-").lower()
             or q_lower in get_today_status(employee.id).lower()
-            or q_lower in employee.status.lower()
+            or q_lower in _employee_status_label(employee).lower()
+            or q_lower in (employee.retirement_reason or "").lower()
+            or q_lower in _retirement_ready_label(employee).lower()
         ]
 
     sort_funcs = {
@@ -77,12 +106,17 @@ def employees_page() -> str:
         "client_company": lambda employee: get_client_company_name(employee.current_client_company_id).lower(),
         "work_type": lambda employee: get_work_type_name(employee.work_type_id).lower(),
         "pay_type": lambda employee: PAY_TYPE_LABELS.get(employee.pay_type, "-"),
-        "status": lambda employee: employee.status,
+        "status": lambda employee: _employee_status_label(employee),
         "today_status": lambda employee: get_today_status(employee.id),
+        "retirement_date": lambda employee: employee.retirement_date or "",
+        "next_contact_date": lambda employee: employee.next_contact_date or "",
     }
     items = sort_items(items, sort, sort_funcs, direction)
 
-    export_headers = ["번호", "이름", "국적", "사업자", "거래처", "근무타입", "급여형태", "재직상태", "오늘 상태"]
+    export_headers = [
+        "번호", "이름", "국적", "사업자", "거래처", "근무타입", "급여형태",
+        "재직상태", "퇴사일", "재연락 대상", "다음 연락일", "오늘 상태"
+    ]
     export_rows = [
         [
             employee.id,
@@ -92,7 +126,10 @@ def employees_page() -> str:
             get_client_company_name(employee.current_client_company_id),
             get_work_type_name(employee.work_type_id),
             PAY_TYPE_LABELS.get(employee.pay_type, "-"),
-            "재직" if employee.status == "active" else "비활성",
+            _employee_status_label(employee),
+            employee.retirement_date or "-",
+            _retirement_ready_label(employee),
+            employee.next_contact_date or "-",
             get_today_status(employee.id),
         ]
         for employee in items
@@ -104,8 +141,7 @@ def employees_page() -> str:
     paged_items, total_count, total_pages = paginate_items(items, page, 10)
     rows = ""
     for employee in paged_items:
-        employment_badge = status_badge("근무중" if employee.status == "active" else "결근")
-        rows += f"""
+        rows += f'''
         <tr>
             <td>{employee.id}</td>
             <td><a href="/employees/{employee.id}">{employee.name}</a></td>
@@ -114,11 +150,14 @@ def employees_page() -> str:
             <td>{get_client_company_name(employee.current_client_company_id)}</td>
             <td>{get_work_type_name(employee.work_type_id)}</td>
             <td>{PAY_TYPE_LABELS.get(employee.pay_type, "-")}</td>
-            <td>{employment_badge}</td>
+            <td>{_employee_status_badge(employee)}</td>
+            <td>{employee.retirement_date or '-'}</td>
+            <td>{status_badge(_retirement_ready_label(employee))}</td>
+            <td>{employee.next_contact_date or '-'}</td>
             <td>{status_badge(get_today_status(employee.id))}</td>
             <td>{_employee_action_forms(employee, compact=True)}</td>
         </tr>
-        """
+        '''
 
     filter_options = ['<option value="">전체 거래처</option>']
     for company in ClientCompany.query.order_by(ClientCompany.id.asc()).all():
@@ -128,35 +167,51 @@ def employees_page() -> str:
     toolbar = render_table_toolbar(
         base_path="/employees",
         current_params={"client_company_id": client_company_id or "", "q": q, "sort": sort, "direction": direction},
-        search_placeholder="이름, 국적, 사업자, 거래처, 근무타입 검색",
+        search_placeholder="이름, 국적, 사업자, 거래처, 퇴사사유 검색",
         search_value=q,
-        sort_options=[("id", "번호"), ("name", "이름"), ("nationality", "국적"), ("our_business", "사업자"), ("client_company", "거래처"), ("work_type", "근무타입"), ("pay_type", "급여형태"), ("status", "재직상태"), ("today_status", "오늘 상태")],
+        sort_options=[
+            ("id", "번호"), ("name", "이름"), ("nationality", "국적"), ("our_business", "사업자"),
+            ("client_company", "거래처"), ("work_type", "근무타입"), ("pay_type", "급여형태"),
+            ("status", "재직상태"), ("retirement_date", "퇴사일"), ("next_contact_date", "다음 연락일"),
+            ("today_status", "오늘 상태")
+        ],
         current_sort=sort,
         current_direction=direction,
         create_href="/employees/new",
         create_label="+ 직원등록",
         reset_href="/employees",
-        filter_html=f"""
+        filter_html=f'''
         <div>
             <label>거래처 선택</label>
-            <select name="client_company_id">{''.join(filter_options)}</select>
+            <select name="client_company_id">{"".join(filter_options)}</select>
         </div>
-        """,
+        ''',
     )
-    pagination = render_pagination("/employees", {"client_company_id": client_company_id or "", "q": q, "sort": sort, "direction": direction}, page, total_pages, total_count)
-    content = f"""
+    pagination = render_pagination(
+        "/employees",
+        {"client_company_id": client_company_id or "", "q": q, "sort": sort, "direction": direction},
+        page,
+        total_pages,
+        total_count,
+    )
+    content = f'''
     <div class="panel">
-        <div class="panel-head"><h2>직원목록</h2><p>배치 인력 조회 및 관리</p></div>
+        <div class="panel-head"><h2>직원목록</h2><p>배치 인력 조회 및 퇴사 대상 관리</p></div>
         <div class="panel-body">
             {toolbar}
             <table>
-                <thead><tr><th>번호</th><th>이름</th><th>국적</th><th>사업자</th><th>거래처</th><th>근무타입</th><th>급여형태</th><th>재직상태</th><th>오늘 상태</th><th>관리</th></tr></thead>
-                <tbody>{rows or '<tr><td colspan="10">데이터가 없습니다.</td></tr>'}</tbody>
+                <thead>
+                    <tr>
+                        <th>번호</th><th>이름</th><th>국적</th><th>사업자</th><th>거래처</th><th>근무타입</th><th>급여형태</th>
+                        <th>재직상태</th><th>퇴사일</th><th>재연락 대상</th><th>다음 연락일</th><th>오늘 상태</th><th>관리</th>
+                    </tr>
+                </thead>
+                <tbody>{rows or '<tr><td colspan="13">데이터가 없습니다.</td></tr>'}</tbody>
             </table>
             {pagination}
         </div>
     </div>
-    """
+    '''
     quick = [{"label": "사원목록", "href": "/employees", "active": True}, {"label": "사원등록", "href": "/employees/new", "active": False}]
     return render_page("직원관리", "employees", content, quick)
 
@@ -186,6 +241,11 @@ def employee_new() -> str:
             phone=request.form.get("phone", "").strip(),
             hire_date=request.form.get("hire_date", today_str()),
             status="active",
+            retirement_date="",
+            retirement_reason="",
+            recontact_target="N",
+            next_contact_date="",
+            retirement_note="",
             work_type_id=int(request.form["work_type_id"]),
             pay_type=request.form.get("pay_type", "monthly"),
             created_at=today_str(),
@@ -200,7 +260,7 @@ def employee_new() -> str:
     client_options = render_client_company_options(selected_client_company_id, selected_our_business_id)
     work_type_options = render_work_type_options(selected_client_company_id)
 
-    content = f"""
+    content = f'''
     <div class="panel">
         <div class="panel-head"><h2>인력등록</h2><p>사업자와 거래처에 배치되는 인력 등록</p></div>
         <div class="panel-body">
@@ -229,7 +289,7 @@ def employee_new() -> str:
             </form>
         </div>
     </div>
-    """
+    '''
     quick = [{"label": "사원목록", "href": "/employees", "active": False}, {"label": "사원등록", "href": "/employees/new", "active": True}]
     return render_page("직원등록", "employees", content, quick)
 
@@ -260,7 +320,6 @@ def employee_edit(employee_id: int) -> str:
         employee.hire_date = request.form.get("hire_date", today_str())
         employee.work_type_id = int(request.form["work_type_id"])
         employee.pay_type = request.form.get("pay_type", "monthly")
-        employee.status = request.form.get("status", "active")
         employee.updated_at = today_str()
         db.session.commit()
         flash("직원 정보가 수정되었습니다.", "success")
@@ -270,7 +329,7 @@ def employee_edit(employee_id: int) -> str:
     client_options = render_client_company_options(selected_client_company_id, selected_our_business_id)
     work_type_options = render_work_type_options(selected_client_company_id, employee.work_type_id)
 
-    content = f"""
+    content = f'''
     <div class="panel">
         <div class="panel-head"><h2>직원수정</h2><p>{employee.name}</p></div>
         <div class="panel-body">
@@ -295,28 +354,86 @@ def employee_edit(employee_id: int) -> str:
                     <div><label>입사일</label><input type="date" name="hire_date" value="{employee.hire_date}"></div>
                     <div><label>근무타입</label><select name="work_type_id">{work_type_options}</select></div>
                     <div><label>급여형태</label><select name="pay_type"><option value="monthly" {'selected' if employee.pay_type == 'monthly' else ''}>월급</option><option value="daily" {'selected' if employee.pay_type == 'daily' else ''}>일급</option><option value="hourly" {'selected' if employee.pay_type == 'hourly' else ''}>시급</option></select></div>
-                    <div><label>재직상태</label><select name="status"><option value="active" {'selected' if employee.status == 'active' else ''}>재직</option><option value="inactive" {'selected' if employee.status != 'active' else ''}>비활성</option></select></div>
+                    <div><label>재직상태</label><input value="{_employee_status_label(employee)}" disabled></div>
                 </div>
                 <div class="actions"><button class="btn btn-primary" type="submit">수정 저장</button><a class="btn btn-white" href="/employees/{employee.id}">취소</a></div>
             </form>
         </div>
     </div>
-    """
+    '''
     quick = [{"label": "사원목록", "href": "/employees", "active": False}, {"label": "직원수정", "href": f"/employees/{employee.id}/edit", "active": True}]
     return render_page("직원수정", "employees", content, quick)
 
 
-@employees_bp.route("/employees/<int:employee_id>/toggle-active", methods=["POST"])
-def employee_toggle_active(employee_id: int):
+@employees_bp.route("/employees/<int:employee_id>/retire", methods=["GET", "POST"])
+def employee_retire(employee_id: int) -> str:
     employee = get_employee(employee_id)
     if not employee:
         return "인력을 찾을 수 없습니다.", 404
 
-    employee.status = "inactive" if employee.status == "active" else "active"
+    if request.method == "POST":
+        employee.status = "retired"
+        employee.retirement_date = request.form.get("retirement_date", "").strip() or today_str()
+        employee.retirement_reason = request.form.get("retirement_reason", "").strip()
+        employee.recontact_target = "Y" if request.form.get("recontact_target", "N") == "Y" else "N"
+        employee.next_contact_date = request.form.get("next_contact_date", "").strip()
+        employee.retirement_note = request.form.get("retirement_note", "").strip()
+        employee.updated_at = today_str()
+        db.session.commit()
+        flash("퇴사처리가 저장되었습니다. 재연락 대상 정보가 함께 관리됩니다.", "success")
+        return redirect(url_for("employees.employee_detail", employee_id=employee.id))
+
+    reason_options = ['<option value="">사유 선택</option>']
+    for option in RETIREMENT_REASON_OPTIONS:
+        selected = "selected" if employee.retirement_reason == option else ""
+        reason_options.append(f'<option value="{option}" {selected}>{option}</option>')
+
+    checked_yes = "checked" if (employee.recontact_target or "N") == "Y" else ""
+    checked_no = "checked" if (employee.recontact_target or "N") != "Y" else ""
+
+    content = f'''
+    <div class="panel">
+        <div class="panel-head"><h2>퇴사처리</h2><p>{employee.name} · 재연락 대상 여부까지 함께 관리</p></div>
+        <div class="panel-body">
+            <form method="post">
+                <div class="form-grid">
+                    <div><label>이름</label><input value="{employee.name}" disabled></div>
+                    <div><label>거래처</label><input value="{get_client_company_name(employee.current_client_company_id)}" disabled></div>
+                    <div><label>퇴사일</label><input type="date" name="retirement_date" value="{employee.retirement_date or today_str()}" required></div>
+                    <div><label>퇴사사유</label><select name="retirement_reason" required>{''.join(reason_options)}</select></div>
+                    <div>
+                        <label>재연락 대상</label>
+                        <div class="actions" style="gap:14px;">
+                            <label style="display:flex; gap:6px; align-items:center;"><input type="radio" name="recontact_target" value="Y" {checked_yes}> 예</label>
+                            <label style="display:flex; gap:6px; align-items:center;"><input type="radio" name="recontact_target" value="N" {checked_no}> 아니오</label>
+                        </div>
+                    </div>
+                    <div><label>다음 연락일</label><input type="date" name="next_contact_date" value="{employee.next_contact_date or ''}"></div>
+                    <div style="grid-column:1 / -1;"><label>메모</label><textarea name="retirement_note" rows="4" placeholder="재입사 가능 시기, 연락 포인트, 희망 근무지 등을 적어두세요.">{employee.retirement_note or ''}</textarea></div>
+                </div>
+                <div class="actions">
+                    <button class="btn btn-primary" type="submit">퇴사처리 저장</button>
+                    <a class="btn btn-white" href="/employees/{employee.id}">취소</a>
+                </div>
+            </form>
+        </div>
+    </div>
+    '''
+    quick = [{"label": "사원목록", "href": "/employees", "active": False}, {"label": "퇴사처리", "href": f"/employees/{employee.id}/retire", "active": True}]
+    return render_page("퇴사처리", "employees", content, quick)
+
+
+@employees_bp.route("/employees/<int:employee_id>/reactivate", methods=["POST"])
+def employee_reactivate(employee_id: int):
+    employee = get_employee(employee_id)
+    if not employee:
+        return "인력을 찾을 수 없습니다.", 404
+
+    employee.status = "active"
     employee.updated_at = today_str()
     db.session.commit()
-    flash(f"직원 상태가 {'재직' if employee.status == 'active' else '비활성'}으로 변경되었습니다.", "success")
-    return redirect(request.referrer or url_for("employees.employees_page"))
+    flash("직원이 재입사 처리되어 재직 상태로 전환되었습니다.", "success")
+    return redirect(request.referrer or url_for("employees.employee_detail", employee_id=employee_id))
 
 
 @employees_bp.route("/employees/<int:employee_id>/delete", methods=["POST"])
@@ -328,7 +445,7 @@ def employee_delete(employee_id: int):
     attendance_count = AttendanceRecord.query.filter_by(employee_id=employee_id).count()
     document_count = EmployeeDocument.query.filter_by(employee_id=employee_id).count()
     if attendance_count or document_count:
-        flash("근태 기록 또는 문서가 있어 직원을 삭제할 수 없습니다. 비활성으로 전환해 주세요.", "error")
+        flash("근태 기록 또는 문서가 있어 직원을 삭제할 수 없습니다. 퇴사처리 후 관리해 주세요.", "error")
         return redirect(request.referrer or url_for("employees.employee_detail", employee_id=employee_id))
 
     db.session.delete(employee)
@@ -363,7 +480,7 @@ def employee_detail(employee_id: int) -> str:
     attendance_rows = ""
     employee_records = AttendanceRecord.query.filter_by(employee_id=employee_id).order_by(AttendanceRecord.work_date.desc()).all()
     for index, record in enumerate(employee_records, start=1):
-        attendance_rows += f"""
+        attendance_rows += f'''
         <tr>
             <td>{index}</td>
             <td>{record.work_date}</td>
@@ -373,11 +490,11 @@ def employee_detail(employee_id: int) -> str:
             <td>{status_badge(record.status)}</td>
             <td>{record.reason or '-'}</td>
         </tr>
-        """
+        '''
 
     document_rows = ""
     for index, document in enumerate(get_employee_documents(employee_id), start=1):
-        document_rows += f"""
+        document_rows += f'''
         <tr>
             <td>{index}</td>
             <td>{DOCUMENT_TYPE_LABELS.get(document.document_type, document.document_type)}</td>
@@ -386,9 +503,26 @@ def employee_detail(employee_id: int) -> str:
             <td>{'민감' if document.is_sensitive else '일반'}</td>
             <td>{document.created_at}</td>
         </tr>
-        """
+        '''
 
-    content = f"""
+    retirement_panel = ""
+    if employee.status != "active" or employee.retirement_date or employee.retirement_reason or employee.retirement_note:
+        retirement_panel = f'''
+        <div class="panel" style="margin-bottom:18px;">
+            <div class="panel-head"><h2>퇴사 / 재연락 관리</h2><p>재입사 가능 인력 추적 정보</p></div>
+            <div class="panel-body">
+                <table>
+                    <tr><th style="width:220px;">퇴사일</th><td>{employee.retirement_date or '-'}</td></tr>
+                    <tr><th>퇴사사유</th><td>{employee.retirement_reason or '-'}</td></tr>
+                    <tr><th>재연락 대상</th><td>{status_badge(_retirement_ready_label(employee))}</td></tr>
+                    <tr><th>다음 연락일</th><td>{employee.next_contact_date or '-'}</td></tr>
+                    <tr><th>메모</th><td>{employee.retirement_note or '-'}</td></tr>
+                </table>
+            </div>
+        </div>
+        '''
+
+    content = f'''
     <div class="panel" style="margin-bottom:18px;">
         <div class="panel-head"><h2>직원 관리 액션</h2><p>{employee.name}</p></div>
         <div class="panel-body">
@@ -414,39 +548,46 @@ def employee_detail(employee_id: int) -> str:
                         <tr><th>연락처</th><td>{employee.phone or '-'}</td></tr>
                         <tr><th>입사일</th><td>{employee.hire_date}</td></tr>
                         <tr><th>급여형태</th><td>{PAY_TYPE_LABELS.get(employee.pay_type, '-')}</td></tr>
-                        <tr><th>재직상태</th><td>{'재직' if employee.status == 'active' else '비활성'}</td></tr>
+                        <tr><th>재직상태</th><td>{_employee_status_badge(employee)}</td></tr>
                         <tr><th>오늘 상태</th><td>{status_badge(get_today_status(employee_id))}</td></tr>
                     </table>
                 </div>
             </div>
+            {retirement_panel}
             <div class="panel">
                 <div class="panel-head"><h2>문서 등록</h2><p>파일 메타데이터 저장</p></div>
                 <div class="panel-body">
                     <form method="post">
                         <div class="form-grid">
                             <div><label>문서종류</label><select name="document_type"><option value="id_card">신분증</option><option value="passport">여권</option><option value="other">기타 문서</option></select></div>
-                            <div><label>파일명</label><input name="file_name" placeholder="예: passport.pdf"></div>
-                            <div><label>MIME 타입</label><select name="file_mime_type"><option value="application/pdf">application/pdf</option><option value="image/jpeg">image/jpeg</option><option value="image/png">image/png</option></select></div>
-                            <div><label>민감 문서 여부</label><select name="is_sensitive"><option value="Y">민감</option><option value="N">일반</option></select></div>
+                            <div><label>파일명</label><input name="file_name" placeholder="예: passport_kim.pdf"></div>
+                            <div><label>MIME 타입</label><input name="file_mime_type" value="application/pdf"></div>
+                            <div><label>민감정보</label><select name="is_sensitive"><option value="Y">민감</option><option value="N">일반</option></select></div>
                         </div>
-                        <div class="actions"><button class="btn btn-primary" type="submit">문서 저장</button></div>
+                        <div class="actions"><button class="btn btn-primary" type="submit">문서 등록</button></div>
                     </form>
+                </div>
+            </div>
+            <div class="panel" style="margin-top:18px;">
+                <div class="panel-head"><h2>등록 문서</h2><p>첨부 문서 메타데이터</p></div>
+                <div class="panel-body">
+                    <table>
+                        <thead><tr><th>번호</th><th>종류</th><th>파일명</th><th>MIME</th><th>등급</th><th>등록일</th></tr></thead>
+                        <tbody>{document_rows or '<tr><td colspan="6">문서가 없습니다.</td></tr>'}</tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="panel" style="margin-top:18px;">
+                <div class="panel-head"><h2>출퇴근 기록</h2><p>최근 이력</p></div>
+                <div class="panel-body">
+                    <table>
+                        <thead><tr><th>번호</th><th>근무일</th><th>근무타입</th><th>출근</th><th>퇴근</th><th>상태</th><th>사유</th></tr></thead>
+                        <tbody>{attendance_rows or '<tr><td colspan="7">출퇴근 기록이 없습니다.</td></tr>'}</tbody>
+                    </table>
                 </div>
             </div>
         </div>
     </div>
-    <div class="panel" style="margin-top:18px;">
-        <div class="panel-head"><h2>등록 문서 목록</h2><p>민감 문서는 최고관리자만 열람 가능 정책</p></div>
-        <div class="panel-body">
-            <table><thead><tr><th>번호</th><th>종류</th><th>파일명</th><th>MIME</th><th>권한</th><th>등록일</th></tr></thead><tbody>{document_rows or '<tr><td colspan="6">등록된 문서가 없습니다.</td></tr>'}</tbody></table>
-        </div>
-    </div>
-    <div class="panel" style="margin-top:18px;">
-        <div class="panel-head"><h2>출퇴근 기록</h2><p>관리자가 직접 처리한 1일 1레코드 기록</p></div>
-        <div class="panel-body">
-            <table><thead><tr><th>번호</th><th>날짜</th><th>근무타입</th><th>출근</th><th>퇴근</th><th>상태</th><th>사유</th></tr></thead><tbody>{attendance_rows or '<tr><td colspan="7">기록이 없습니다.</td></tr>'}</tbody></table>
-        </div>
-    </div>
-    """
-    quick = [{"label": "사원목록", "href": "/employees", "active": True}, {"label": "사원등록", "href": "/employees/new", "active": False}]
-    return render_page("직원상세", "employees", content, quick)
+    '''
+    quick = [{"label": "사원목록", "href": "/employees", "active": False}, {"label": "인력상세", "href": f"/employees/{employee.id}", "active": True}]
+    return render_page("인력상세", "employees", content, quick)
