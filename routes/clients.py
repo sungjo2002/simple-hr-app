@@ -3,6 +3,8 @@ from flask import Blueprint, flash, redirect, request, url_for
 from models import ClientCompany, ClientCompanyPayrollSetting, ClientCompanySetting, ClientCompanyWorkType, Employee, db
 from utils import (
     export_table,
+    format_business_number,
+    format_phone_number,
     get_client_company,
     get_client_company_work_types,
     get_our_business_name,
@@ -122,8 +124,8 @@ def client_company_new() -> str:
             our_business_id=int(request.form["our_business_id"]),
             name=request.form["name"].strip(),
             ceo_name=request.form["ceo_name"].strip(),
-            business_number=request.form["business_number"].strip(),
-            phone=request.form["phone"].strip(),
+            business_number=format_business_number(request.form["business_number"]),
+            phone=format_phone_number(request.form["phone"]),
             address=request.form["address"].strip(),
             business_type=request.form.get("business_type", "").strip(),
             business_item=request.form.get("business_item", "").strip(),
@@ -154,8 +156,8 @@ def client_company_new() -> str:
                     <div><label>사업자</label><select name="our_business_id">{business_options}</select></div>
                     <div><label>거래처명</label><input name="name" required></div>
                     <div><label>대표자명</label><input name="ceo_name" required></div>
-                    <div><label>사업자등록번호</label><input name="business_number" required></div>
-                    <div><label>대표전화</label><input name="phone" required></div>
+                    <div><label>사업자등록번호</label><input name="business_number" data-format="business-number" inputmode="numeric" maxlength="12" placeholder="123-45-67890" required></div>
+                    <div><label>대표전화</label><input name="phone" data-format="phone" inputmode="tel" maxlength="13" placeholder="02-1234-5678" required></div>
                     <div><label>주소</label><input name="address" required></div>
                     <div><label>업태</label><input name="business_type"></div>
                     <div><label>종목</label><input name="business_item"></div>
@@ -182,8 +184,8 @@ def client_company_edit(client_company_id: int) -> str:
         item.our_business_id = int(request.form["our_business_id"])
         item.name = request.form["name"].strip()
         item.ceo_name = request.form["ceo_name"].strip()
-        item.business_number = request.form["business_number"].strip()
-        item.phone = request.form["phone"].strip()
+        item.business_number = format_business_number(request.form["business_number"])
+        item.phone = format_phone_number(request.form["phone"])
         item.address = request.form["address"].strip()
         item.business_type = request.form.get("business_type", "").strip()
         item.business_item = request.form.get("business_item", "").strip()
@@ -205,8 +207,8 @@ def client_company_edit(client_company_id: int) -> str:
                     <div><label>사업자</label><select name="our_business_id">{business_options}</select></div>
                     <div><label>거래처명</label><input name="name" value="{item.name}" required></div>
                     <div><label>대표자명</label><input name="ceo_name" value="{item.ceo_name}" required></div>
-                    <div><label>사업자등록번호</label><input name="business_number" value="{item.business_number}" required></div>
-                    <div><label>대표전화</label><input name="phone" value="{item.phone}" required></div>
+                    <div><label>사업자등록번호</label><input name="business_number" value="{item.business_number}" data-format="business-number" inputmode="numeric" maxlength="12" placeholder="123-45-67890" required></div>
+                    <div><label>대표전화</label><input name="phone" value="{item.phone}" data-format="phone" inputmode="tel" maxlength="13" placeholder="02-1234-5678" required></div>
                     <div><label>주소</label><input name="address" value="{item.address}" required></div>
                     <div><label>업태</label><input name="business_type" value="{item.business_type or ''}"></div>
                     <div><label>종목</label><input name="business_item" value="{item.business_item or ''}"></div>

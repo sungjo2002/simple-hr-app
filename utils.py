@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from calendar import monthrange
+import re
 from datetime import date, datetime
 from typing import Any
 
@@ -29,6 +30,41 @@ PAY_TYPE_LABELS = {
     "hourly": "시급제",
 }
 
+
+
+
+def digits_only(value: str | None) -> str:
+    return re.sub(r"\D", "", value or "")
+
+
+def format_business_number(value: str | None) -> str:
+    digits = digits_only(value)[:10]
+    if len(digits) <= 3:
+        return digits
+    if len(digits) <= 5:
+        return f"{digits[:3]}-{digits[3:]}"
+    return f"{digits[:3]}-{digits[3:5]}-{digits[5:]}"
+
+
+def format_phone_number(value: str | None) -> str:
+    digits = digits_only(value)[:11]
+    if not digits:
+        return ""
+    if digits.startswith("02"):
+        if len(digits) <= 2:
+            return digits
+        if len(digits) <= 5:
+            return f"{digits[:2]}-{digits[2:]}"
+        if len(digits) <= 9:
+            return f"{digits[:2]}-{digits[2:5]}-{digits[5:]}"
+        return f"{digits[:2]}-{digits[2:6]}-{digits[6:]}"
+    if len(digits) <= 3:
+        return digits
+    if len(digits) <= 6:
+        return f"{digits[:3]}-{digits[3:]}"
+    if len(digits) <= 10:
+        return f"{digits[:3]}-{digits[3:6]}-{digits[6:]}"
+    return f"{digits[:3]}-{digits[3:7]}-{digits[7:]}"
 
 SECTION_META = {
     "home": {"label": "홈", "href": "/"},
