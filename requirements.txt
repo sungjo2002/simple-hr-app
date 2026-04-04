@@ -5,3 +5,6 @@ gunicorn==22.0.0
 psycopg[binary]
 
 openpyxl==3.1.5
+
+Pillow==11.2.1
+pytesseract==0.3.13

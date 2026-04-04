@@ -1,6 +1,15 @@
-from flask import Blueprint, redirect, request, url_for
+
+from __future__ import annotations
+
+import os
+from pathlib import Path
+from uuid import uuid4
+
+from flask import Blueprint, current_app, redirect, render_template_string, request, url_for
+from werkzeug.utils import secure_filename
 
 from models import AttendanceRecord, ClientCompany, Employee, EmployeeDocument, OurBusiness, db
+from services.document_ai import extract_document_data
 from utils import (
     DOCUMENT_TYPE_LABELS,
     PAY_TYPE_LABELS,
@@ -19,6 +28,8 @@ from utils import (
 )
 
 employees_bp = Blueprint("employees", __name__)
+
+ALLOWED_UPLOAD_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".pdf"}
 
 
 def _employee_base_query(status: str = "active"):
@@ -71,16 +82,17 @@ def _employee_rows(status: str) -> tuple[str, int | None, str]:
         query = query.filter(Employee.name.contains(keyword))
     rows = ""
     for employee in query.order_by(Employee.id.asc()).all():
+        state_text = "퇴사" if employee.status == "retired" else status_badge(get_today_status(employee.id))
         rows += f"""
         <tr>
             <td>{employee.id}</td>
             <td><a href="/employees/{employee.id}">{employee.name}</a></td>
-            <td>{employee.nationality}</td>
+            <td>{employee.nationality or '-'}</td>
             <td>{get_our_business_name(employee.our_business_id)}</td>
             <td>{get_client_company_name(employee.current_client_company_id)}</td>
             <td>{get_work_type_name(employee.work_type_id)}</td>
             <td>{PAY_TYPE_LABELS.get(employee.pay_type, "-")}</td>
-            <td>{"퇴사" if employee.status == "retired" else status_badge(get_today_status(employee.id))}</td>
+            <td>{state_text}</td>
             <td>{_employee_action_buttons(employee)}</td>
         </tr>
         """
@@ -111,6 +123,74 @@ def _employee_quick(active_key: str) -> list[dict[str, str | bool]]:
         {"label": "사원목록", "href": "/employees", "active": active_key == "list"},
         {"label": "퇴사자관리", "href": "/employees/retired", "active": active_key == "retired"},
     ]
+
+
+def _store_uploaded_file(employee_id: int):
+    file = request.files.get("document_file")
+    if not file or not file.filename:
+        return None, "파일을 선택하세요."
+    extension = Path(file.filename).suffix.lower()
+    if extension not in ALLOWED_UPLOAD_EXTENSIONS:
+        return None, "PNG, JPG, WEBP, PDF만 업로드할 수 있습니다."
+
+    safe_name = secure_filename(file.filename) or f"employee_{employee_id}{extension}"
+    save_dir = Path(current_app.config["UPLOAD_FOLDER"]) / "employee_documents" / str(employee_id)
+    save_dir.mkdir(parents=True, exist_ok=True)
+    save_name = f"{uuid4().hex}_{safe_name}"
+    save_path = save_dir / save_name
+    file.save(save_path)
+    return save_path, ""
+
+
+def _apply_extracted_data_to_employee(employee: Employee, document_type: str, extraction) -> None:
+    if extraction.name and not employee.name:
+        employee.name = extraction.name
+    if extraction.english_name:
+        employee.english_name = extraction.english_name
+    if extraction.local_name:
+        employee.local_name = extraction.local_name
+    if extraction.nationality:
+        employee.nationality = extraction.nationality
+    if extraction.birth_date:
+        employee.birth_date = extraction.birth_date
+    if extraction.gender:
+        employee.gender = extraction.gender
+    if extraction.document_number:
+        if document_type == "passport":
+            employee.passport_number = extraction.document_number
+        elif document_type == "id_card":
+            employee.id_card_number = extraction.document_number
+    if extraction.photo_path:
+        employee.profile_photo_path = extraction.photo_path
+    employee.updated_at = today_str()
+
+
+def _profile_photo(employee: Employee) -> str:
+    if employee.profile_photo_path:
+        return f'<img src="{employee.profile_photo_path}" alt="직원 사진" style="width:100%; max-width:220px; border-radius:18px; border:1px solid #dbe4ef; object-fit:cover;">'
+    return '<div class="photo-box">사진이 없습니다</div>'
+
+
+def _document_extraction_summary(document: EmployeeDocument) -> str:
+    rows = []
+    if document.extracted_name:
+        rows.append(f"<tr><th>이름</th><td>{document.extracted_name}</td></tr>")
+    if document.extracted_english_name:
+        rows.append(f"<tr><th>영문이름</th><td>{document.extracted_english_name}</td></tr>")
+    if document.extracted_nationality:
+        rows.append(f"<tr><th>국적</th><td>{document.extracted_nationality}</td></tr>")
+    if document.extracted_document_number:
+        rows.append(f"<tr><th>문서번호</th><td>{document.extracted_document_number}</td></tr>")
+    if document.extracted_birth_date:
+        rows.append(f"<tr><th>생년월일</th><td>{document.extracted_birth_date}</td></tr>")
+    if document.extracted_gender:
+        rows.append(f"<tr><th>성별</th><td>{document.extracted_gender}</td></tr>")
+    if not rows:
+        return "<p style='margin:0; color:#64748b;'>추출된 문서 정보가 없습니다. 이미지 품질이 낮거나 OCR이 준비되지 않았을 수 있습니다.</p>"
+    photo_html = ""
+    if document.preview_photo_path:
+        photo_html = f'<div style="margin-bottom:12px;"><img src="{document.preview_photo_path}" alt="추출 사진" style="width:160px; border-radius:14px; border:1px solid #dbe4ef;"></div>'
+    return f"{photo_html}<table>{''.join(rows)}</table>"
 
 
 @employees_bp.route("/employees")
@@ -171,7 +251,13 @@ def employee_new() -> str:
             our_business_id=int(request.form["our_business_id"]),
             current_client_company_id=int(request.form["client_company_id"]),
             name=request.form["name"].strip(),
-            nationality=request.form["nationality"].strip(),
+            english_name=request.form.get("english_name", "").strip(),
+            local_name=request.form.get("local_name", "").strip(),
+            nationality=request.form.get("nationality", "").strip(),
+            passport_number=request.form.get("passport_number", "").strip(),
+            id_card_number=request.form.get("id_card_number", "").strip(),
+            birth_date=request.form.get("birth_date", "").strip(),
+            gender=request.form.get("gender", "").strip(),
             phone=request.form.get("phone", "").strip(),
             hire_date=request.form.get("hire_date", today_str()),
             status="active",
@@ -207,7 +293,13 @@ def employee_new() -> str:
                     <div><label>사업자</label><input value="{get_our_business_name(selected_our_business_id)}" disabled></div>
                     <div><label>거래처</label><input value="{get_client_company_name(selected_client_company_id)}" disabled></div>
                     <div><label>이름</label><input name="name" required></div>
+                    <div><label>영문이름</label><input name="english_name"></div>
+                    <div><label>현지이름</label><input name="local_name"></div>
                     <div><label>국적</label><input name="nationality" required></div>
+                    <div><label>여권번호</label><input name="passport_number"></div>
+                    <div><label>ID번호</label><input name="id_card_number"></div>
+                    <div><label>생년월일</label><input type="date" name="birth_date"></div>
+                    <div><label>성별</label><select name="gender"><option value="">선택</option><option value="남">남</option><option value="여">여</option></select></div>
                     <div><label>연락처</label><input name="phone"></div>
                     <div><label>입사일</label><input type="date" name="hire_date" value="{today_str()}"></div>
                     <div><label>급여형태</label><select name="pay_type"><option value="monthly">월급제</option><option value="daily">일급제</option><option value="hourly">시급제</option></select></div>
@@ -227,21 +319,55 @@ def employee_detail(employee_id: int) -> str:
     if not employee:
         return "인력을 찾을 수 없습니다.", 404
 
+    upload_message = request.args.get("upload_message", "").strip()
+
     if request.method == "POST":
-        file_name = request.form.get("file_name", "").strip() or "unnamed.pdf"
-        doc = EmployeeDocument(
+        save_path, error_message = _store_uploaded_file(employee_id)
+        if error_message:
+            return redirect(url_for("employees.employee_detail", employee_id=employee_id, upload_message=error_message))
+
+        assert save_path is not None
+        document_type = request.form.get("document_type", "other")
+        extraction = extract_document_data(
+            file_path=str(save_path),
             employee_id=employee_id,
-            document_type=request.form.get("document_type", "other"),
-            file_name=file_name,
-            file_path=f"/uploads/{file_name}",
-            file_mime_type=request.form.get("file_mime_type", "application/pdf"),
+            document_type=document_type,
+            upload_root=current_app.config["UPLOAD_FOLDER"],
+        )
+        relative_file_path = f"/uploads/employee_documents/{employee_id}/{save_path.name}"
+        document = EmployeeDocument(
+            employee_id=employee_id,
+            document_type=document_type,
+            file_name=request.form.get("file_name", "").strip() or save_path.name,
+            file_path=relative_file_path,
+            preview_photo_path=extraction.photo_path,
+            extracted_text=extraction.text,
+            extracted_name=extraction.name,
+            extracted_english_name=extraction.english_name,
+            extracted_local_name=extraction.local_name,
+            extracted_nationality=extraction.nationality,
+            extracted_document_number=extraction.document_number,
+            extracted_birth_date=extraction.birth_date,
+            extracted_gender=extraction.gender,
+            file_mime_type=request.form.get("file_mime_type", "application/octet-stream"),
             is_sensitive=request.form.get("is_sensitive", "Y") == "Y",
             uploaded_by="super_admin",
             created_at=today_str(),
         )
-        db.session.add(doc)
+        db.session.add(document)
+
+        if request.form.get("apply_to_employee") == "Y":
+            _apply_extracted_data_to_employee(employee, document_type, extraction)
+
         db.session.commit()
-        return redirect(url_for("employees.employee_detail", employee_id=employee_id))
+        done_message = {
+            "ocr_success": "문서를 업로드하고 자동 인식했습니다.",
+            "ocr_unavailable": "문서는 저장됐지만 OCR 엔진이 없어 자동 인식은 건너뛰었습니다.",
+            "ocr_empty": "문서는 저장됐지만 인식된 텍스트가 적어 자동 입력이 제한되었습니다.",
+            "pdf_stored_only": "PDF는 저장만 완료했습니다. OCR/사진 추출은 이미지 업로드에서 더 잘 동작합니다.",
+            "stored": "문서를 저장했습니다.",
+        }.get(extraction.status, "문서를 저장했습니다.")
+        return redirect(url_for("employees.employee_detail", employee_id=employee_id, upload_message=done_message))
 
     attendance_rows = ""
     employee_records = AttendanceRecord.query.filter_by(employee_id=employee_id).order_by(AttendanceRecord.work_date.desc()).all()
@@ -259,24 +385,42 @@ def employee_detail(employee_id: int) -> str:
         """
 
     document_rows = ""
-    for index, document in enumerate(get_employee_documents(employee_id), start=1):
+    documents = get_employee_documents(employee_id)
+    latest_document = documents[0] if documents else None
+    for index, document in enumerate(documents, start=1):
+        preview_link = f'<a href="{document.preview_photo_path}" target="_blank">추출사진</a>' if document.preview_photo_path else '-'
         document_rows += f"""
         <tr>
             <td>{index}</td>
             <td>{DOCUMENT_TYPE_LABELS.get(document.document_type, document.document_type)}</td>
-            <td>{document.file_name}</td>
+            <td><a href="{document.file_path}" target="_blank">{document.file_name}</a></td>
             <td>{document.file_mime_type}</td>
             <td>{'민감' if document.is_sensitive else '일반'}</td>
+            <td>{preview_link}</td>
             <td>{document.created_at}</td>
         </tr>
         """
 
+    latest_extract_block = ""
+    if latest_document:
+        latest_extract_block = f"""
+        <div class="panel" style="margin-top:18px;">
+            <div class="panel-head"><h2>최근 문서 자동 인식 결과</h2><p>최신 업로드 문서 기준</p></div>
+            <div class="panel-body">
+                {_document_extraction_summary(latest_document)}
+            </div>
+        </div>
+        """
+
+    upload_notice = f'<div class="panel" style="margin-bottom:18px; background:#f8fbff;"><div class="panel-body" style="padding:14px 18px;">{upload_message}</div></div>' if upload_message else ""
+
     content = f"""
+    {upload_notice}
     <div class="two-col">
         <div class="side-box" style="padding:14px;">
             <h3 style="margin:0 0 12px;">인력 사진</h3>
-            <div class="photo-box">사진 등록 영역</div>
-            <div class="actions"><button class="btn btn-primary" type="button">사진 등록</button><button class="btn btn-white" type="button">사진 변경</button></div>
+            {_profile_photo(employee)}
+            <div style="margin-top:12px; color:#64748b; font-size:13px;">여권/ID 카드 이미지 업로드 시 사진 영역을 자동으로 잘라서 여기에 보여줍니다.</div>
         </div>
         <div>
             <div class="panel" style="margin-bottom:18px;">
@@ -285,7 +429,13 @@ def employee_detail(employee_id: int) -> str:
                     <div class="actions" style="margin-top:0; margin-bottom:16px;">{_employee_action_buttons(employee)}</div>
                     <table>
                         <tr><th style="width:220px;">이름</th><td>{employee.name}</td></tr>
-                        <tr><th>국적</th><td>{employee.nationality}</td></tr>
+                        <tr><th>영문이름</th><td>{employee.english_name or '-'}</td></tr>
+                        <tr><th>현지이름</th><td>{employee.local_name or '-'}</td></tr>
+                        <tr><th>국적</th><td>{employee.nationality or '-'}</td></tr>
+                        <tr><th>여권번호</th><td>{employee.passport_number or '-'}</td></tr>
+                        <tr><th>ID번호</th><td>{employee.id_card_number or '-'}</td></tr>
+                        <tr><th>생년월일</th><td>{employee.birth_date or '-'}</td></tr>
+                        <tr><th>성별</th><td>{employee.gender or '-'}</td></tr>
                         <tr><th>사업자</th><td>{get_our_business_name(employee.our_business_id)}</td></tr>
                         <tr><th>거래처</th><td>{get_client_company_name(employee.current_client_company_id)}</td></tr>
                         <tr><th>근무타입</th><td>{get_work_type_name(employee.work_type_id)}</td></tr>
@@ -297,25 +447,28 @@ def employee_detail(employee_id: int) -> str:
                 </div>
             </div>
             <div class="panel">
-                <div class="panel-head"><h2>문서 등록</h2><p>파일 메타데이터 저장</p></div>
+                <div class="panel-head"><h2>문서 등록</h2><p>이미지 업로드 시 OCR 자동입력과 사진 추출을 시도합니다.</p></div>
                 <div class="panel-body">
-                    <form method="post">
+                    <form method="post" enctype="multipart/form-data">
                         <div class="form-grid">
                             <div><label>문서종류</label><select name="document_type"><option value="id_card">신분증</option><option value="passport">여권</option><option value="other">기타 문서</option></select></div>
-                            <div><label>파일명</label><input name="file_name" placeholder="예: passport.pdf"></div>
-                            <div><label>MIME 타입</label><select name="file_mime_type"><option value="application/pdf">application/pdf</option><option value="image/jpeg">image/jpeg</option><option value="image/png">image/png</option></select></div>
+                            <div><label>표시 파일명</label><input name="file_name" placeholder="비워두면 실제 파일명을 사용"></div>
+                            <div><label>문서 파일</label><input type="file" name="document_file" accept=".png,.jpg,.jpeg,.webp,.pdf" required></div>
+                            <div><label>MIME 타입</label><select name="file_mime_type"><option value="image/jpeg">image/jpeg</option><option value="image/png">image/png</option><option value="image/webp">image/webp</option><option value="application/pdf">application/pdf</option></select></div>
                             <div><label>민감 문서 여부</label><select name="is_sensitive"><option value="Y">민감</option><option value="N">일반</option></select></div>
+                            <div><label>직원 정보에 자동 반영</label><select name="apply_to_employee"><option value="Y">예</option><option value="N">아니오</option></select></div>
                         </div>
-                        <div class="actions"><button class="btn btn-primary" type="submit">문서 저장</button></div>
+                        <div class="actions"><button class="btn btn-primary" type="submit">문서 업로드</button></div>
                     </form>
                 </div>
             </div>
+            {latest_extract_block}
         </div>
     </div>
     <div class="panel" style="margin-top:18px;">
         <div class="panel-head"><h2>등록 문서 목록</h2><p>민감 문서는 최고관리자만 열람 가능 정책</p></div>
         <div class="panel-body">
-            <table><thead><tr><th>번호</th><th>종류</th><th>파일명</th><th>MIME</th><th>권한</th><th>등록일</th></tr></thead><tbody>{document_rows or '<tr><td colspan="6">등록된 문서가 없습니다.</td></tr>'}</tbody></table>
+            <table><thead><tr><th>번호</th><th>종류</th><th>파일명</th><th>MIME</th><th>권한</th><th>추출사진</th><th>등록일</th></tr></thead><tbody>{document_rows or '<tr><td colspan="7">등록된 문서가 없습니다.</td></tr>'}</tbody></table>
         </div>
     </div>
     <div class="panel" style="margin-top:18px;">
@@ -344,7 +497,13 @@ def employee_edit(employee_id: int) -> str:
         employee.our_business_id = int(request.form["our_business_id"])
         employee.current_client_company_id = int(request.form["client_company_id"])
         employee.name = request.form["name"].strip()
-        employee.nationality = request.form["nationality"].strip()
+        employee.english_name = request.form.get("english_name", "").strip()
+        employee.local_name = request.form.get("local_name", "").strip()
+        employee.nationality = request.form.get("nationality", "").strip()
+        employee.passport_number = request.form.get("passport_number", "").strip()
+        employee.id_card_number = request.form.get("id_card_number", "").strip()
+        employee.birth_date = request.form.get("birth_date", "").strip()
+        employee.gender = request.form.get("gender", "").strip()
         employee.phone = request.form.get("phone", "").strip()
         employee.hire_date = request.form.get("hire_date", today_str())
         employee.pay_type = request.form.get("pay_type", "monthly")
@@ -376,7 +535,13 @@ def employee_edit(employee_id: int) -> str:
                     <div><label>사업자</label><input value="{get_our_business_name(selected_our_business_id)}" disabled></div>
                     <div><label>거래처</label><input value="{get_client_company_name(selected_client_company_id)}" disabled></div>
                     <div><label>이름</label><input name="name" value="{employee.name}" required></div>
-                    <div><label>국적</label><input name="nationality" value="{employee.nationality}" required></div>
+                    <div><label>영문이름</label><input name="english_name" value="{employee.english_name or ''}"></div>
+                    <div><label>현지이름</label><input name="local_name" value="{employee.local_name or ''}"></div>
+                    <div><label>국적</label><input name="nationality" value="{employee.nationality or ''}" required></div>
+                    <div><label>여권번호</label><input name="passport_number" value="{employee.passport_number or ''}"></div>
+                    <div><label>ID번호</label><input name="id_card_number" value="{employee.id_card_number or ''}"></div>
+                    <div><label>생년월일</label><input type="date" name="birth_date" value="{employee.birth_date or ''}"></div>
+                    <div><label>성별</label><select name="gender"><option value="" {"selected" if not employee.gender else ""}>선택</option><option value="남" {"selected" if employee.gender == "남" else ""}>남</option><option value="여" {"selected" if employee.gender == "여" else ""}>여</option></select></div>
                     <div><label>연락처</label><input name="phone" value="{employee.phone or ''}"></div>
                     <div><label>입사일</label><input type="date" name="hire_date" value="{employee.hire_date}"></div>
                     <div><label>급여형태</label><select name="pay_type"><option value="monthly" {"selected" if employee.pay_type == "monthly" else ""}>월급제</option><option value="daily" {"selected" if employee.pay_type == "daily" else ""}>일급제</option><option value="hourly" {"selected" if employee.pay_type == "hourly" else ""}>시급제</option></select></div>

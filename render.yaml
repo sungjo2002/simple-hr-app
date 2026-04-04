@@ -3,7 +3,7 @@ services:
     name: simple-hr-app
     env: python
     plan: free
-    buildCommand: pip install -r requirements.txt
+    buildCommand: apt-get update && apt-get install -y tesseract-ocr tesseract-ocr-eng tesseract-ocr-kor && pip install -r requirements.txt
     startCommand: gunicorn app:app
     envVars:
       - key: SECRET_KEY
