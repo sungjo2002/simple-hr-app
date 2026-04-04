@@ -212,9 +212,142 @@ def employees_page() -> str:
         </div>
     </div>
     '''
-    quick = [{"label": "사원목록", "href": "/employees", "active": True}, {"label": "사원등록", "href": "/employees/new", "active": False}]
+    quick = [
+        {"label": "사원목록", "href": "/employees", "active": True},
+        {"label": "퇴사자관리", "href": "/employees/retired", "active": False},
+    ]
     return render_page("직원관리", "employees", content, quick)
 
+
+
+@employees_bp.route("/employees/retired")
+def employees_retired_page() -> str:
+    client_company_raw = request.args.get("client_company_id", "")
+    client_company_id = int(client_company_raw) if client_company_raw.isdigit() else None
+    q = request.args.get("q", "").strip()
+    sort = request.args.get("sort", "retirement_date")
+    direction = request.args.get("direction", "desc")
+    page_raw = request.args.get("page", "1")
+    export_format = request.args.get("export", "").strip().lower()
+    page = int(page_raw) if page_raw.isdigit() else 1
+
+    items = [employee for employee in get_employees_by_client_company(client_company_id) if employee.status != "active"]
+    if q:
+        q_lower = q.lower()
+        items = [
+            employee for employee in items
+            if q_lower in employee.name.lower()
+            or q_lower in employee.nationality.lower()
+            or q_lower in get_our_business_name(employee.our_business_id).lower()
+            or q_lower in get_client_company_name(employee.current_client_company_id).lower()
+            or q_lower in (employee.retirement_reason or "").lower()
+            or q_lower in (employee.retirement_note or "").lower()
+        ]
+
+    sort_funcs = {
+        "id": lambda employee: employee.id,
+        "name": lambda employee: employee.name.lower(),
+        "nationality": lambda employee: employee.nationality.lower(),
+        "our_business": lambda employee: get_our_business_name(employee.our_business_id).lower(),
+        "client_company": lambda employee: get_client_company_name(employee.current_client_company_id).lower(),
+        "retirement_date": lambda employee: employee.retirement_date or "",
+        "next_contact_date": lambda employee: employee.next_contact_date or "",
+    }
+    items = sort_items(items, sort, sort_funcs, direction)
+
+    export_headers = [
+        "번호", "이름", "국적", "사업자", "거래처", "퇴사일", "퇴사사유", "다음 연락일", "메모"
+    ]
+    export_rows = [
+        [
+            employee.id,
+            employee.name,
+            employee.nationality,
+            get_our_business_name(employee.our_business_id),
+            get_client_company_name(employee.current_client_company_id),
+            employee.retirement_date or "-",
+            employee.retirement_reason or "-",
+            employee.next_contact_date or "-",
+            employee.retirement_note or "-",
+        ]
+        for employee in items
+    ]
+    export_response = export_table("retired_employees", "퇴사자관리", export_headers, export_rows, export_format)
+    if export_response:
+        return export_response
+
+    paged_items, total_count, total_pages = paginate_items(items, page, 10)
+    rows = ""
+    for employee in paged_items:
+        rows += f"""
+        <tr>
+            <td>{employee.id}</td>
+            <td><a href="/employees/{employee.id}">{employee.name}</a></td>
+            <td>{employee.nationality}</td>
+            <td>{get_our_business_name(employee.our_business_id)}</td>
+            <td>{get_client_company_name(employee.current_client_company_id)}</td>
+            <td>{employee.retirement_date or '-'}</td>
+            <td>{employee.retirement_reason or '-'}</td>
+            <td>{employee.next_contact_date or '-'}</td>
+            <td>{employee.retirement_note or '-'}</td>
+            <td>{_employee_action_forms(employee, compact=True)}</td>
+        </tr>
+        """
+
+    filter_options = ['<option value="">전체 거래처</option>']
+    for company in ClientCompany.query.order_by(ClientCompany.id.asc()).all():
+        selected = "selected" if client_company_id == company.id else ""
+        filter_options.append(f'<option value="{company.id}" {selected}>{company.name}</option>')
+
+    toolbar = render_table_toolbar(
+        base_path="/employees/retired",
+        current_params={"client_company_id": client_company_id or "", "q": q, "sort": sort, "direction": direction},
+        search_placeholder="이름, 국적, 거래처, 퇴사사유, 메모 검색",
+        search_value=q,
+        sort_options=[
+            ("retirement_date", "퇴사일"), ("next_contact_date", "다음 연락일"), ("name", "이름"),
+            ("nationality", "국적"), ("our_business", "사업자"), ("client_company", "거래처"), ("id", "번호")
+        ],
+        current_sort=sort,
+        current_direction=direction,
+        reset_href="/employees/retired",
+        filter_html=f"""
+        <div>
+            <label>거래처 선택</label>
+            <select name="client_company_id">{''.join(filter_options)}</select>
+        </div>
+        """,
+    )
+    pagination = render_pagination(
+        "/employees/retired",
+        {"client_company_id": client_company_id or "", "q": q, "sort": sort, "direction": direction},
+        page,
+        total_pages,
+        total_count,
+    )
+    content = f"""
+    <div class="panel">
+        <div class="panel-head"><h2>퇴사자관리</h2><p>퇴사한 인력만 따로 모아 관리합니다.</p></div>
+        <div class="panel-body">
+            {toolbar}
+            <table>
+                <thead>
+                    <tr>
+                        <th>번호</th><th>이름</th><th>국적</th><th>사업자</th><th>거래처</th>
+                        <th>퇴사일</th><th>퇴사사유</th><th>다음 연락일</th><th>메모</th><th>관리</th>
+                    </tr>
+                </thead>
+                <tbody>{rows or '<tr><td colspan="10">퇴사자 데이터가 없습니다.</td></tr>'}</tbody>
+            </table>
+            {pagination}
+        </div>
+    </div>
+    """
+    quick = [
+        {"label": "사원목록", "href": "/employees", "active": False},
+        {"label": "퇴사자관리", "href": "/employees/retired", "active": True},
+    ]
+    return render_page("퇴사자관리", "employees", content, quick)
 
 @employees_bp.route("/employees/new", methods=["GET", "POST"])
 def employee_new() -> str:
@@ -290,7 +423,7 @@ def employee_new() -> str:
         </div>
     </div>
     '''
-    quick = [{"label": "사원목록", "href": "/employees", "active": False}, {"label": "사원등록", "href": "/employees/new", "active": True}]
+    quick = [{"label": "사원목록", "href": "/employees", "active": False}, {"label": "퇴사자관리", "href": "/employees/retired", "active": False}]
     return render_page("직원등록", "employees", content, quick)
 
 
@@ -361,7 +494,7 @@ def employee_edit(employee_id: int) -> str:
         </div>
     </div>
     '''
-    quick = [{"label": "사원목록", "href": "/employees", "active": False}, {"label": "직원수정", "href": f"/employees/{employee.id}/edit", "active": True}]
+    quick = [{"label": "사원목록", "href": "/employees", "active": False}, {"label": "퇴사자관리", "href": "/employees/retired", "active": False}]
     return render_page("직원수정", "employees", content, quick)
 
 
@@ -419,7 +552,7 @@ def employee_retire(employee_id: int) -> str:
         </div>
     </div>
     '''
-    quick = [{"label": "사원목록", "href": "/employees", "active": False}, {"label": "퇴사처리", "href": f"/employees/{employee.id}/retire", "active": True}]
+    quick = [{"label": "사원목록", "href": "/employees", "active": False}, {"label": "퇴사자관리", "href": "/employees/retired", "active": False}]
     return render_page("퇴사처리", "employees", content, quick)
 
 
@@ -589,5 +722,5 @@ def employee_detail(employee_id: int) -> str:
         </div>
     </div>
     '''
-    quick = [{"label": "사원목록", "href": "/employees", "active": False}, {"label": "인력상세", "href": f"/employees/{employee.id}", "active": True}]
+    quick = [{"label": "사원목록", "href": "/employees", "active": False}, {"label": "퇴사자관리", "href": "/employees/retired", "active": False}]
     return render_page("인력상세", "employees", content, quick)
