@@ -142,27 +142,86 @@ def _store_uploaded_file(employee_id: int):
     return save_path, ""
 
 
-def _apply_extracted_data_to_employee(employee: Employee, document_type: str, extraction) -> None:
-    if extraction.name and not employee.name:
-        employee.name = extraction.name
-    if extraction.english_name:
-        employee.english_name = extraction.english_name
-    if extraction.local_name:
-        employee.local_name = extraction.local_name
-    if extraction.nationality:
-        employee.nationality = extraction.nationality
-    if extraction.birth_date:
-        employee.birth_date = extraction.birth_date
-    if extraction.gender:
-        employee.gender = extraction.gender
+def _apply_extracted_data_to_employee(
+    employee: Employee,
+    document_type: str,
+    extraction,
+    *,
+    overwrite: bool = False,
+) -> None:
+    def assign_if_allowed(field_name: str, value: str) -> None:
+        if not value:
+            return
+        current_value = getattr(employee, field_name, "") or ""
+        if overwrite or not current_value:
+            setattr(employee, field_name, value)
+
+    assign_if_allowed("name", extraction.name)
+    assign_if_allowed("english_name", extraction.english_name)
+    assign_if_allowed("local_name", extraction.local_name)
+    assign_if_allowed("nationality", extraction.nationality)
+    assign_if_allowed("birth_date", extraction.birth_date)
+    assign_if_allowed("gender", extraction.gender)
+
     if extraction.document_number:
         if document_type == "passport":
-            employee.passport_number = extraction.document_number
+            assign_if_allowed("passport_number", extraction.document_number)
         elif document_type == "id_card":
-            employee.id_card_number = extraction.document_number
-    if extraction.photo_path:
-        employee.profile_photo_path = extraction.photo_path
+            assign_if_allowed("id_card_number", extraction.document_number)
+
+    assign_if_allowed("profile_photo_path", extraction.photo_path)
     employee.updated_at = today_str()
+
+
+
+def _save_employee_document(employee: Employee, *, document_type: str) -> str:
+    save_path, error_message = _store_uploaded_file(employee.id)
+    if error_message:
+        return error_message
+
+    assert save_path is not None
+    extraction = extract_document_data(
+        file_path=str(save_path),
+        employee_id=employee.id,
+        document_type=document_type,
+        upload_root=current_app.config["UPLOAD_FOLDER"],
+    )
+    relative_file_path = f"/uploads/employee_documents/{employee.id}/{save_path.name}"
+    document_file = request.files.get("document_file")
+    document = EmployeeDocument(
+        employee_id=employee.id,
+        document_type=document_type,
+        file_name=request.form.get("file_name", "").strip() or save_path.name,
+        file_path=relative_file_path,
+        preview_photo_path=extraction.photo_path,
+        extracted_text=extraction.text,
+        extracted_name=extraction.name,
+        extracted_english_name=extraction.english_name,
+        extracted_local_name=extraction.local_name,
+        extracted_nationality=extraction.nationality,
+        extracted_document_number=extraction.document_number,
+        extracted_birth_date=extraction.birth_date,
+        extracted_gender=extraction.gender,
+        file_mime_type=(document_file.mimetype if document_file else "") or "application/octet-stream",
+        is_sensitive=request.form.get("is_sensitive", "Y") == "Y",
+        uploaded_by="super_admin",
+        created_at=today_str(),
+    )
+    db.session.add(document)
+    _apply_extracted_data_to_employee(
+        employee,
+        document_type,
+        extraction,
+        overwrite=request.form.get("apply_to_employee", "Y") == "Y",
+    )
+    db.session.commit()
+    return {
+        "ocr_success": "문서를 업로드하고 자동 인식했습니다.",
+        "ocr_unavailable": "문서는 저장됐지만 OCR 엔진이 없어 자동 인식은 건너뛰었습니다.",
+        "ocr_empty": "문서는 저장됐지만 인식된 텍스트가 적어 자동 입력이 제한되었습니다.",
+        "pdf_stored_only": "PDF는 저장만 완료했습니다. OCR/사진 추출은 이미지 업로드에서 더 잘 동작합니다.",
+        "stored": "문서를 저장했습니다.",
+    }.get(extraction.status, "문서를 저장했습니다.")
 
 
 def _profile_photo(employee: Employee) -> str:
@@ -268,6 +327,14 @@ def employee_new() -> str:
         )
         db.session.add(item)
         db.session.commit()
+
+        if request.files.get("document_file") and request.files["document_file"].filename:
+            upload_message = _save_employee_document(
+                item,
+                document_type=request.form.get("document_type", "other"),
+            )
+            return redirect(url_for("employees.employee_detail", employee_id=item.id, upload_message=upload_message))
+
         return redirect(url_for("employees.employees_page"))
 
     business_options = render_our_business_options(selected_our_business_id)
@@ -276,7 +343,7 @@ def employee_new() -> str:
 
     content = f"""
     <div class="panel">
-        <div class="panel-head"><h2>사원등록</h2><p>사업자와 거래처에 배치되는 인력 등록</p></div>
+        <div class="panel-head"><h2>사원등록</h2><p>기본정보 등록과 문서 OCR 자동입력을 한 번에 처리</p></div>
         <div class="panel-body">
             <form method="get" class="panel" style="box-shadow:none; border-radius:14px; margin-bottom:16px;">
                 <div class="panel-body">
@@ -286,9 +353,44 @@ def employee_new() -> str:
                     </div>
                 </div>
             </form>
-            <form method="post">
+            <form method="post" enctype="multipart/form-data">
                 <input type="hidden" name="our_business_id" value="{selected_our_business_id}">
                 <input type="hidden" name="client_company_id" value="{selected_client_company_id}">
+
+                <div class="panel" style="box-shadow:none; border-radius:14px; margin-bottom:16px; background:#f8fbff;">
+                    <div class="panel-head"><h2 style="font-size:18px;">문서 업로드 / OCR 자동입력</h2><p>여권 또는 ID 카드 이미지를 올리면 저장 후 자동 인식 결과를 상세화면에 반영합니다.</p></div>
+                    <div class="panel-body">
+                        <div class="form-grid">
+                            <div>
+                                <label>문서 유형</label>
+                                <select name="document_type">
+                                    <option value="passport">여권</option>
+                                    <option value="id_card">ID 카드</option>
+                                    <option value="other">기타 문서</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label>문서 파일</label>
+                                <input type="file" name="document_file" accept=".png,.jpg,.jpeg,.webp,.pdf">
+                            </div>
+                            <div>
+                                <label>문서명</label>
+                                <input name="file_name" placeholder="예: 여권 앞면">
+                            </div>
+                            <div>
+                                <label>민감 문서 여부</label>
+                                <select name="is_sensitive">
+                                    <option value="Y">민감</option>
+                                    <option value="N">일반</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="helper-text" style="margin-top:10px; color:#64748b;">
+                            문서를 같이 올리면 저장 후 OCR 자동 인식과 사진 추출을 시도하고, 인식된 값은 직원 상세와 사진칸에 연결됩니다.
+                        </div>
+                    </div>
+                </div>
+
                 <div class="form-grid">
                     <div><label>사업자</label><input value="{get_our_business_name(selected_our_business_id)}" disabled></div>
                     <div><label>거래처</label><input value="{get_client_company_name(selected_client_company_id)}" disabled></div>
@@ -305,7 +407,10 @@ def employee_new() -> str:
                     <div><label>급여형태</label><select name="pay_type"><option value="monthly">월급제</option><option value="daily">일급제</option><option value="hourly">시급제</option></select></div>
                     <div><label>근무타입</label><select name="work_type_id">{work_type_options}</select></div>
                 </div>
-                <div class="actions"><button class="btn btn-primary" type="submit">저장</button><a class="btn btn-white" href="/employees">취소</a></div>
+                <div class="actions">
+                    <button class="btn btn-primary" type="submit">저장</button>
+                    <a class="btn btn-white" href="/employees">취소</a>
+                </div>
             </form>
         </div>
     </div>
@@ -322,52 +427,11 @@ def employee_detail(employee_id: int) -> str:
     upload_message = request.args.get("upload_message", "").strip()
 
     if request.method == "POST":
-        save_path, error_message = _store_uploaded_file(employee_id)
-        if error_message:
-            return redirect(url_for("employees.employee_detail", employee_id=employee_id, upload_message=error_message))
-
-        assert save_path is not None
-        document_type = request.form.get("document_type", "other")
-        extraction = extract_document_data(
-            file_path=str(save_path),
-            employee_id=employee_id,
-            document_type=document_type,
-            upload_root=current_app.config["UPLOAD_FOLDER"],
+        upload_message = _save_employee_document(
+            employee,
+            document_type=request.form.get("document_type", "other"),
         )
-        relative_file_path = f"/uploads/employee_documents/{employee_id}/{save_path.name}"
-        document = EmployeeDocument(
-            employee_id=employee_id,
-            document_type=document_type,
-            file_name=request.form.get("file_name", "").strip() or save_path.name,
-            file_path=relative_file_path,
-            preview_photo_path=extraction.photo_path,
-            extracted_text=extraction.text,
-            extracted_name=extraction.name,
-            extracted_english_name=extraction.english_name,
-            extracted_local_name=extraction.local_name,
-            extracted_nationality=extraction.nationality,
-            extracted_document_number=extraction.document_number,
-            extracted_birth_date=extraction.birth_date,
-            extracted_gender=extraction.gender,
-            file_mime_type=request.form.get("file_mime_type", "application/octet-stream"),
-            is_sensitive=request.form.get("is_sensitive", "Y") == "Y",
-            uploaded_by="super_admin",
-            created_at=today_str(),
-        )
-        db.session.add(document)
-
-        if request.form.get("apply_to_employee") == "Y":
-            _apply_extracted_data_to_employee(employee, document_type, extraction)
-
-        db.session.commit()
-        done_message = {
-            "ocr_success": "문서를 업로드하고 자동 인식했습니다.",
-            "ocr_unavailable": "문서는 저장됐지만 OCR 엔진이 없어 자동 인식은 건너뛰었습니다.",
-            "ocr_empty": "문서는 저장됐지만 인식된 텍스트가 적어 자동 입력이 제한되었습니다.",
-            "pdf_stored_only": "PDF는 저장만 완료했습니다. OCR/사진 추출은 이미지 업로드에서 더 잘 동작합니다.",
-            "stored": "문서를 저장했습니다.",
-        }.get(extraction.status, "문서를 저장했습니다.")
-        return redirect(url_for("employees.employee_detail", employee_id=employee_id, upload_message=done_message))
+        return redirect(url_for("employees.employee_detail", employee_id=employee_id, upload_message=upload_message))
 
     attendance_rows = ""
     employee_records = AttendanceRecord.query.filter_by(employee_id=employee_id).order_by(AttendanceRecord.work_date.desc()).all()
