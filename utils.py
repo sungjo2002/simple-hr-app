@@ -389,6 +389,7 @@ BASE_HTML = """
     }
     .form-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:14px; }
     .actions { display:flex; gap:10px; flex-wrap:wrap; margin-top:18px; align-items:end; }
+    .actions form { margin:0; }
     .subtabs { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px; }
     .subtabs a,.subtabs span { text-decoration:none; padding:10px 14px; border-radius:12px; background:#fff; border:1px solid #d1dbe8; color:var(--text); font-size:13px; font-weight:800; box-shadow:var(--shadow-soft); }
     .subtabs a:hover { color:var(--primary); border-color:#bfdbfe; background:#f8fbff; }
@@ -426,6 +427,8 @@ BASE_HTML = """
     .btn-green { background:var(--green); color:white; }
     .btn-green:hover, .btn-green:focus-visible { background:#15803d; }
     .btn-white { background:white; color:var(--text); border-color:#c8d0da; }
+    .btn-danger { background:var(--red); color:white; box-shadow:0 10px 18px rgba(220,38,38,.16); }
+    .btn-danger:hover, .btn-danger:focus-visible { background:#b91c1c; }
     .btn-white:hover, .btn-white:focus-visible { color:var(--primary); border-color:#93c5fd; background:#f8fbff; }
     .btn:active { transform:translateY(0); }
     .btn.is-active { background:linear-gradient(180deg,#eff6ff 0%, #dbeafe 100%); color:var(--primary); border-color:#93c5fd; }
@@ -779,12 +782,10 @@ def get_display_status(employee_id: int, work_date: str) -> str:
     return record.status if record else "before_work"
 
 
-def get_employees_by_client_company(client_company_id: int | None, keyword: str = "") -> list[Employee]:
+def get_employees_by_client_company(client_company_id: int | None) -> list[Employee]:
     query = Employee.query
     if client_company_id is not None:
         query = query.filter_by(current_client_company_id=client_company_id)
-    if keyword:
-        query = query.filter(Employee.name.ilike(f"%{keyword}%"))
     return query.order_by(Employee.id.asc()).all()
 
 

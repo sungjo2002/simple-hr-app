@@ -1,22 +1,76 @@
-from html import escape
-
 from flask import Blueprint, redirect, request, url_for
 
-from models import ClientCompany, Employee, EmployeeDocument, db
-from utils import DOCUMENT_TYPE_LABELS, PAY_TYPE_LABELS, get_client_company_name, get_employee, get_employee_documents, get_employees_by_client_company, get_our_business_name, get_today_status, get_work_type_name, render_client_company_options, render_our_business_options, render_page, render_work_type_options, status_badge, today_str
+from models import AttendanceRecord, ClientCompany, Employee, EmployeeDocument, OurBusiness, db
+from utils import (
+    DOCUMENT_TYPE_LABELS,
+    PAY_TYPE_LABELS,
+    get_client_company_name,
+    get_employee,
+    get_employee_documents,
+    get_our_business_name,
+    get_today_status,
+    get_work_type_name,
+    render_client_company_options,
+    render_our_business_options,
+    render_page,
+    render_work_type_options,
+    status_badge,
+    today_str,
+)
 
 employees_bp = Blueprint("employees", __name__)
 
 
-@employees_bp.route("/employees")
-def employees_page() -> str:
+def _employee_base_query(status: str = "active"):
+    query = Employee.query
+    if status == "active":
+        query = query.filter(Employee.status != "retired")
+    elif status == "retired":
+        query = query.filter_by(status="retired")
+    return query
+
+
+def _employee_action_buttons(employee: Employee) -> str:
+    retire_button = ""
+    if employee.status == "retired":
+        retire_button = f"""
+        <form method="post" action="/employees/{employee.id}/reactivate" onsubmit="return confirm('재직 상태로 복귀할까요?');">
+            <button class="btn btn-white" type="submit">재직복귀</button>
+        </form>
+        """
+    else:
+        retire_button = f"""
+        <form method="post" action="/employees/{employee.id}/retire" onsubmit="return confirm('퇴사처리할까요?');">
+            <button class="btn btn-white" type="submit">퇴사처리</button>
+        </form>
+        """
+    return f"""
+    <div class="actions" style="margin:0; gap:8px; flex-wrap:wrap;">
+        <a class="btn btn-white" href="/employees/{employee.id}/edit">수정</a>
+        {retire_button}
+        <form method="post" action="/employees/{employee.id}/delete" onsubmit="return confirm('삭제할까요? 근태나 문서가 있으면 삭제되지 않습니다.');">
+            <button class="btn btn-danger" type="submit">삭제</button>
+        </form>
+    </div>
+    """
+
+
+def _employee_filters() -> tuple[int | None, str]:
     client_company_raw = request.args.get("client_company_id", "")
     client_company_id = int(client_company_raw) if client_company_raw.isdigit() else None
     keyword = request.args.get("keyword", "").strip()
+    return client_company_id, keyword
 
+
+def _employee_rows(status: str) -> tuple[str, int | None, str]:
+    client_company_id, keyword = _employee_filters()
+    query = _employee_base_query(status)
+    if client_company_id is not None:
+        query = query.filter_by(current_client_company_id=client_company_id)
+    if keyword:
+        query = query.filter(Employee.name.contains(keyword))
     rows = ""
-    employees = get_employees_by_client_company(client_company_id, keyword)
-    for employee in employees:
+    for employee in query.order_by(Employee.id.asc()).all():
         rows += f"""
         <tr>
             <td>{employee.id}</td>
@@ -26,58 +80,78 @@ def employees_page() -> str:
             <td>{get_client_company_name(employee.current_client_company_id)}</td>
             <td>{get_work_type_name(employee.work_type_id)}</td>
             <td>{PAY_TYPE_LABELS.get(employee.pay_type, "-")}</td>
-            <td>{status_badge(get_today_status(employee.id))}</td>
+            <td>{"퇴사" if employee.status == "retired" else status_badge(get_today_status(employee.id))}</td>
+            <td>{_employee_action_buttons(employee)}</td>
         </tr>
         """
+    return rows, client_company_id, keyword
 
+
+def _employee_filter_form(client_company_id: int | None, keyword: str) -> str:
     filter_options = ['<option value="">전체 거래처</option>']
     for item in ClientCompany.query.order_by(ClientCompany.id.asc()).all():
         selected = "selected" if item.id == client_company_id else ""
         filter_options.append(f'<option value="{item.id}" {selected}>{item.name}</option>')
-
-    state_items = [f"총 {len(employees)}명"]
-    if keyword:
-        state_items.append(f"이름 검색: {keyword}")
-    if client_company_id:
-        state_items.append(f"거래처 필터: {get_client_company_name(client_company_id)}")
-    page_state = " · ".join(state_items)
-
-    content = f"""
+    return f"""
     <div class="panel" style="margin-bottom:18px;">
         <div class="panel-body">
             <form method="get" class="actions" style="margin-top:0;">
-                <div style="min-width:220px;">
-                    <label>이름 검색</label>
-                    <input type="search" name="keyword" value="{escape(keyword)}" placeholder="사원명 입력" />
-                </div>
-                <div style="min-width:260px;">
-                    <label>거래처 필터</label>
-                    <select name="client_company_id">{"".join(filter_options)}</select>
-                </div>
+                <div style="min-width:240px;"><label>이름 검색</label><input name="keyword" value="{keyword}" placeholder="이름 검색"></div>
+                <div style="min-width:260px;"><label>거래처 필터</label><select name="client_company_id">{"".join(filter_options)}</select></div>
                 <div><button class="btn btn-white" type="submit">조회</button></div>
-                <div><a class="btn btn-white" href="/employees">초기화</a></div>
+                <div><a class="btn btn-white" href="{request.path}">초기화</a></div>
             </form>
-            <div class="section-hint" style="margin-top:12px;">{escape(page_state)}</div>
         </div>
     </div>
+    """
+
+
+def _employee_quick(active_key: str) -> list[dict[str, str | bool]]:
+    return [
+        {"label": "사원목록", "href": "/employees", "active": active_key == "list"},
+        {"label": "퇴사자관리", "href": "/employees/retired", "active": active_key == "retired"},
+    ]
+
+
+@employees_bp.route("/employees")
+def employees_page() -> str:
+    rows, client_company_id, keyword = _employee_rows("active")
+    content = f"""
+    {_employee_filter_form(client_company_id, keyword)}
     <div class="panel">
-        <div class="panel-head"><h2>인력목록</h2><p>이름으로 빠르게 탐색하고 사업자 / 거래처 / 근무타입 기준으로 관리합니다.</p></div>
+        <div class="panel-head"><h2>사원목록</h2><p>재직 중인 인력 관리</p></div>
         <div class="panel-body">
-            <div class="actions" style="margin-top:0; margin-bottom:16px;"><a class="btn btn-primary" href="/employees/new">인력등록</a></div>
+            <div class="actions" style="margin-top:0; margin-bottom:16px;"><a class="btn btn-primary" href="/employees/new">사원등록</a></div>
             <table>
-                <thead><tr><th>번호</th><th>이름</th><th>국적</th><th>사업자</th><th>거래처</th><th>근무타입</th><th>급여형태</th><th>오늘 상태</th></tr></thead>
-                <tbody>{rows or '<tr><td colspan="8">조건에 맞는 인력이 없습니다.</td></tr>'}</tbody>
+                <thead><tr><th>번호</th><th>이름</th><th>국적</th><th>사업자</th><th>거래처</th><th>근무타입</th><th>급여형태</th><th>오늘 상태</th><th>관리</th></tr></thead>
+                <tbody>{rows or '<tr><td colspan="9">인력이 없습니다.</td></tr>'}</tbody>
             </table>
         </div>
     </div>
     """
-    quick = [{"label": "사원목록", "href": "/employees", "active": True}, {"label": "사원등록", "href": "/employees/new", "active": False}]
-    return render_page("직원관리", "employees", content, quick)
+    return render_page("직원관리", "employees", content, _employee_quick("list"))
+
+
+@employees_bp.route("/employees/retired")
+def retired_employees_page() -> str:
+    rows, client_company_id, keyword = _employee_rows("retired")
+    content = f"""
+    {_employee_filter_form(client_company_id, keyword)}
+    <div class="panel">
+        <div class="panel-head"><h2>퇴사자관리</h2><p>퇴사 처리된 인력만 별도 관리</p></div>
+        <div class="panel-body">
+            <table>
+                <thead><tr><th>번호</th><th>이름</th><th>국적</th><th>사업자</th><th>거래처</th><th>근무타입</th><th>급여형태</th><th>상태</th><th>관리</th></tr></thead>
+                <tbody>{rows or '<tr><td colspan="9">퇴사자가 없습니다.</td></tr>'}</tbody>
+            </table>
+        </div>
+    </div>
+    """
+    return render_page("퇴사자관리", "employees", content, _employee_quick("retired"))
 
 
 @employees_bp.route("/employees/new", methods=["GET", "POST"])
 def employee_new() -> str:
-    from models import ClientCompany, OurBusiness
     businesses = OurBusiness.query.order_by(OurBusiness.id.asc()).all()
     if not businesses:
         return "먼저 사업자를 등록하세요.", 400
@@ -116,7 +190,7 @@ def employee_new() -> str:
 
     content = f"""
     <div class="panel">
-        <div class="panel-head"><h2>인력등록</h2><p>사업자와 거래처에 배치되는 인력 등록</p></div>
+        <div class="panel-head"><h2>사원등록</h2><p>사업자와 거래처에 배치되는 인력 등록</p></div>
         <div class="panel-body">
             <form method="get" class="panel" style="box-shadow:none; border-radius:14px; margin-bottom:16px;">
                 <div class="panel-body">
@@ -144,13 +218,11 @@ def employee_new() -> str:
         </div>
     </div>
     """
-    quick = [{"label": "사원목록", "href": "/employees", "active": False}, {"label": "사원등록", "href": "/employees/new", "active": True}]
-    return render_page("직원등록", "employees", content, quick)
+    return render_page("사원등록", "employees", content, _employee_quick("list"))
 
 
 @employees_bp.route("/employees/<int:employee_id>", methods=["GET", "POST"])
 def employee_detail(employee_id: int) -> str:
-    from models import AttendanceRecord
     employee = get_employee(employee_id)
     if not employee:
         return "인력을 찾을 수 없습니다.", 404
@@ -210,6 +282,7 @@ def employee_detail(employee_id: int) -> str:
             <div class="panel" style="margin-bottom:18px;">
                 <div class="panel-head"><h2>인력상세</h2><p>기본정보 / 문서 / 출퇴근 기록</p></div>
                 <div class="panel-body">
+                    <div class="actions" style="margin-top:0; margin-bottom:16px;">{_employee_action_buttons(employee)}</div>
                     <table>
                         <tr><th style="width:220px;">이름</th><td>{employee.name}</td></tr>
                         <tr><th>국적</th><td>{employee.nationality}</td></tr>
@@ -219,7 +292,7 @@ def employee_detail(employee_id: int) -> str:
                         <tr><th>연락처</th><td>{employee.phone or '-'}</td></tr>
                         <tr><th>입사일</th><td>{employee.hire_date}</td></tr>
                         <tr><th>급여형태</th><td>{PAY_TYPE_LABELS.get(employee.pay_type, '-')}</td></tr>
-                        <tr><th>오늘 상태</th><td>{status_badge(get_today_status(employee_id))}</td></tr>
+                        <tr><th>상태</th><td>{"퇴사" if employee.status == "retired" else status_badge(get_today_status(employee_id))}</td></tr>
                     </table>
                 </div>
             </div>
@@ -252,5 +325,102 @@ def employee_detail(employee_id: int) -> str:
         </div>
     </div>
     """
-    quick = [{"label": "사원목록", "href": "/employees", "active": True}, {"label": "사원등록", "href": "/employees/new", "active": False}]
-    return render_page("직원상세", "employees", content, quick)
+    active_key = "retired" if employee.status == "retired" else "list"
+    return render_page("직원상세", "employees", content, _employee_quick(active_key))
+
+
+@employees_bp.route("/employees/<int:employee_id>/edit", methods=["GET", "POST"])
+def employee_edit(employee_id: int) -> str:
+    employee = get_employee(employee_id)
+    if not employee:
+        return "인력을 찾을 수 없습니다.", 404
+
+    selected_our_business_raw = request.values.get("our_business_id", str(employee.our_business_id))
+    selected_our_business_id = int(selected_our_business_raw) if selected_our_business_raw.isdigit() else employee.our_business_id
+    selected_client_raw = request.values.get("client_company_id", str(employee.current_client_company_id or ""))
+    selected_client_company_id = int(selected_client_raw) if selected_client_raw.isdigit() else (employee.current_client_company_id or 0)
+
+    if request.method == "POST":
+        employee.our_business_id = int(request.form["our_business_id"])
+        employee.current_client_company_id = int(request.form["client_company_id"])
+        employee.name = request.form["name"].strip()
+        employee.nationality = request.form["nationality"].strip()
+        employee.phone = request.form.get("phone", "").strip()
+        employee.hire_date = request.form.get("hire_date", today_str())
+        employee.pay_type = request.form.get("pay_type", "monthly")
+        employee.work_type_id = int(request.form["work_type_id"])
+        employee.updated_at = today_str()
+        db.session.commit()
+        return redirect(url_for("employees.employee_detail", employee_id=employee_id))
+
+    business_options = render_our_business_options(selected_our_business_id)
+    client_options = render_client_company_options(selected_client_company_id, selected_our_business_id)
+    work_type_options = render_work_type_options(selected_client_company_id)
+
+    content = f"""
+    <div class="panel">
+        <div class="panel-head"><h2>사원수정</h2><p>{employee.name}</p></div>
+        <div class="panel-body">
+            <form method="get" class="panel" style="box-shadow:none; border-radius:14px; margin-bottom:16px;">
+                <div class="panel-body">
+                    <div class="form-grid">
+                        <div><label>사업자</label><select name="our_business_id" onchange="this.form.submit()">{business_options}</select></div>
+                        <div><label>거래처</label><select name="client_company_id" onchange="this.form.submit()">{client_options}</select></div>
+                    </div>
+                </div>
+            </form>
+            <form method="post">
+                <input type="hidden" name="our_business_id" value="{selected_our_business_id}">
+                <input type="hidden" name="client_company_id" value="{selected_client_company_id}">
+                <div class="form-grid">
+                    <div><label>사업자</label><input value="{get_our_business_name(selected_our_business_id)}" disabled></div>
+                    <div><label>거래처</label><input value="{get_client_company_name(selected_client_company_id)}" disabled></div>
+                    <div><label>이름</label><input name="name" value="{employee.name}" required></div>
+                    <div><label>국적</label><input name="nationality" value="{employee.nationality}" required></div>
+                    <div><label>연락처</label><input name="phone" value="{employee.phone or ''}"></div>
+                    <div><label>입사일</label><input type="date" name="hire_date" value="{employee.hire_date}"></div>
+                    <div><label>급여형태</label><select name="pay_type"><option value="monthly" {"selected" if employee.pay_type == "monthly" else ""}>월급제</option><option value="daily" {"selected" if employee.pay_type == "daily" else ""}>일급제</option><option value="hourly" {"selected" if employee.pay_type == "hourly" else ""}>시급제</option></select></div>
+                    <div><label>근무타입</label><select name="work_type_id">{work_type_options}</select></div>
+                </div>
+                <div class="actions"><button class="btn btn-primary" type="submit">저장</button><a class="btn btn-white" href="/employees/{employee.id}">취소</a></div>
+            </form>
+        </div>
+    </div>
+    """
+    active_key = "retired" if employee.status == "retired" else "list"
+    return render_page("사원수정", "employees", content, _employee_quick(active_key))
+
+
+@employees_bp.route("/employees/<int:employee_id>/retire", methods=["POST"])
+def employee_retire(employee_id: int):
+    employee = get_employee(employee_id)
+    if not employee:
+        return "인력을 찾을 수 없습니다.", 404
+    employee.status = "retired"
+    employee.updated_at = today_str()
+    db.session.commit()
+    return redirect(request.referrer or url_for("employees.employees_page"))
+
+
+@employees_bp.route("/employees/<int:employee_id>/reactivate", methods=["POST"])
+def employee_reactivate(employee_id: int):
+    employee = get_employee(employee_id)
+    if not employee:
+        return "인력을 찾을 수 없습니다.", 404
+    employee.status = "active"
+    employee.updated_at = today_str()
+    db.session.commit()
+    return redirect(request.referrer or url_for("employees.retired_employees_page"))
+
+
+@employees_bp.route("/employees/<int:employee_id>/delete", methods=["POST"])
+def employee_delete(employee_id: int):
+    employee = get_employee(employee_id)
+    if not employee:
+        return "인력을 찾을 수 없습니다.", 404
+    has_attendance = AttendanceRecord.query.filter_by(employee_id=employee_id).count() > 0
+    has_documents = EmployeeDocument.query.filter_by(employee_id=employee_id).count() > 0
+    if not has_attendance and not has_documents:
+        db.session.delete(employee)
+        db.session.commit()
+    return redirect(url_for("employees.retired_employees_page" if employee.status == "retired" else "employees.employees_page"))
